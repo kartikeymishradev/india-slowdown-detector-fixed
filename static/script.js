@@ -266,22 +266,23 @@ function buildHist() {
         y:{ ticks:{font:{size:11}}, title:{display:true,text:'Value (%)',font:{size:11}} }
       },
       plugins: {
-  legend: {
-    position: 'bottom',
-    align: 'center',
-    labels: {
-      boxWidth: 10,
-      boxHeight: 10,
-      padding: 12,
-      usePointStyle: true,
-      pointStyle: 'circle',
-      font: {
-        size: 10
+        legend: { display: false }, // apna custom legend (hist-toggles) use kar rahe hain
+        tooltip: { mode:'index', intersect:false }
       }
     }
-  }
+  });
 }
-    }
+
+function initHistToggles() {
+  const map = { 'toggle-gdp':0, 'toggle-exports':1, 'toggle-unemp':2 };
+  Object.entries(map).forEach(([id, idx]) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('change', () => {
+      if (!histChart) return;
+      histChart.setDatasetVisibility(idx, el.checked);
+      histChart.update();
+    });
   });
 }
 
@@ -337,6 +338,7 @@ async function refreshAll() {
   buildExtra(data.indicators.extended_indicators, data.indicators.derived_features);
   buildFeat();
   buildHist();
+  initHistToggles();
   initLearnSection(data.indicators);
 
    // Hide loader here

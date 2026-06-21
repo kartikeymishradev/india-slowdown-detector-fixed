@@ -156,9 +156,11 @@ def api_sector(sector_id):
 @app.route("/api/analyze", methods=["POST"])
 def api_analyze():
     """Generate AI narrative analysis using Gemini (no grounding — just commentary
-    on numbers we already computed)."""
-    if not os.environ.get("GEMINI_API_KEY"):
-        return jsonify({"error": "GEMINI_API_KEY not configured on server"}), 500
+    on numbers we already computed). Uses GEMINI_API_KEY_ANALYZE if set,
+    otherwise falls back to the shared GEMINI_API_KEY (handled inside
+    generate_analysis / gemini_grounding.py)."""
+    if not (os.environ.get("GEMINI_API_KEY_ANALYZE") or os.environ.get("GEMINI_API_KEY")):
+        return jsonify({"error": "GEMINI_API_KEY_ANALYZE (or GEMINI_API_KEY) not configured on server"}), 500
 
     payload = request.get_json(silent=True) or {}
     indicators = payload.get("indicators")
@@ -185,8 +187,12 @@ def api_learn():
     """
     Gemini-powered chatbot for the Learn & Ask section.
     Answers economy questions in simple, plain English for everyday readers.
+    Uses GEMINI_API_KEY_LEARN if set, otherwise falls back to the shared
+    GEMINI_API_KEY, so this stays backward compatible with a single-key setup.
     """
-    if not os.environ.get("GEMINI_API_KEY"):
+    learn_key = os.environ.get("GEMINI_API_KEY_LEARN") or os.environ.get("GEMINI_API_KEY")
+
+    if not learn_key:
         return jsonify({"answer": "The Gemini API key isn't configured on this server. Please contact the admin."}), 200
 
     payload  = request.get_json(silent=True) or {}
@@ -202,7 +208,7 @@ def api_learn():
     try:
         from google import genai
 
-        client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+        client = genai.Client(api_key=learn_key)
 
         # Build conversation history for context
         history_text = ""
@@ -238,7 +244,9 @@ Your answer:"""
         return jsonify({"answer": answer})
 
     except Exception as e:
-        print(f"WARNING: Learn API error: {e}")
+        import traceback
+        print(f"⚠️  Learn API error: {type(e).__name__}: {e}")
+        traceback.print_exc()
         return jsonify({
             "answer": "There's a small technical issue right now. Please try again shortly!"
         }), 200
@@ -246,8 +254,17 @@ Your answer:"""
 
 @app.route("/api/health")
 def health():
-    return jsonify({"status": "ok", "model_loaded": model is not None,
-                     "gemini_configured": bool(os.environ.get("GEMINI_API_KEY"))})
+    return jsonify({
+        "status": "ok",
+        "model_loaded": model is not None,
+        "gemini_keys_configured": {
+            "shared": bool(os.environ.get("GEMINI_API_KEY")),
+            "grounding": bool(os.environ.get("GEMINI_API_KEY_GROUNDING")),
+            "extended": bool(os.environ.get("GEMINI_API_KEY_EXTENDED")),
+            "analyze": bool(os.environ.get("GEMINI_API_KEY_ANALYZE")),
+            "learn": bool(os.environ.get("GEMINI_API_KEY_LEARN")),
+        }
+    })
 
 
 if __name__ == "__main__":

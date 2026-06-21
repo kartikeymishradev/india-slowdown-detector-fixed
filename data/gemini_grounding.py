@@ -5,13 +5,38 @@ Uses Gemini's built-in google_search tool to look up indicators that have
 no free official API (PMI, unemployment, credit growth, etc.) and asks the
 model to return ONLY a strict JSON object extracted from the search results.
 
-Caching: results are cached in-memory for CACHE_TTL_SECONDS so we don't
-burn through the free-tier grounding quota (5,000 prompts/month) on every
-page refresh.
+API KEY STRATEGY
+-----------------
+Each Gemini-calling feature uses its OWN API key so that one feature's
+usage can't exhaust another feature's free-tier quota:
 
-This is best-effort. If the key is missing, the call fails, or the model's
-output isn't valid JSON, we return None and the caller falls back to
-config.json values. We never let this crash the app.
+    GEMINI_API_KEY_GROUNDING  -> fetch_grounded_indicators()   (used by /api/predict)
+    GEMINI_API_KEY_EXTENDED   -> fetch_extended_indicators()   (used by /api/predict)
+    GEMINI_API_KEY_ANALYZE    -> generate_analysis()           (used by /api/analyze)
+    GEMINI_API_KEY_LEARN      -> used directly in app.py's /api/learn route
+
+If a feature-specific key isn't set, each function falls back to the
+generic GEMINI_API_KEY env var, so this is backward compatible with a
+single-key setup.
+
+BURST PROTECTION (important for /api/predict)
+------------------------------------------------
+fetch_grounded_indicators() and fetch_extended_indicators() run on EVERY
+hit to /api/predict, which fires automatically on every page load — this
+is the highest-traffic, least user-controlled path in the app. A traffic
+burst (e.g. a LinkedIn post going out) could mean many page loads within
+the same minute, each one a candidate Gemini call.
+
+To protect against this we use a MIN_CALL_INTERVAL_SECONDS cooldown that is
+separate from (and shorter than) the long CACHE_TTL_SECONDS: even if the
+6-hour cache is "expired" (e.g. due to a serverless cold start resetting
+in-memory state), we will not call Gemini again until at least
+MIN_CALL_INTERVAL_SECONDS has passed since the last attempt — successful
+or not. Any request inside that cooldown window just gets whatever stale
+cached data exists (or None, letting the caller fall back to config.json).
+
+This trades a little freshness for a hard ceiling on how often Gemini can
+possibly be called, no matter how many concurrent visitors hit the page.
 """
 
 import os
@@ -20,10 +45,18 @@ import time
 import re
 import traceback
 
-CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 hours — plenty fresh for monthly-ish data
-_cache = {"data": None, "ts": 0}
+CACHE_TTL_SECONDS = 6 * 60 * 60        # 6 hours — normal "data still fresh" window
+MIN_CALL_INTERVAL_SECONDS = 90          # hard floor: never call Gemini more often than this,
+                                         # regardless of cache state — this is what actually
+                                         # protects the free-tier RPM limit during traffic bursts
+_cache = {"data": None, "ts": 0, "last_attempt": 0}
 
-GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+
+def _get_key(specific_env_var):
+    """Look up a feature-specific Gemini key, falling back to the shared
+    GEMINI_API_KEY if the specific one isn't set."""
+    return os.environ.get(specific_env_var) or os.environ.get("GEMINI_API_KEY")
+
 
 FIELDS_PROMPT = """Search for the most recent, official values of these India economic indicators and return ONLY a JSON object — no markdown, no explanation, no code fences.
 
@@ -60,20 +93,34 @@ def _extract_json(text):
 
 def fetch_grounded_indicators():
     """Return a dict of live-ish indicators via Gemini + Google Search grounding,
-    or None if unavailable for any reason (no key, API error, bad parse)."""
+    or None if unavailable for any reason (no key, API error, bad parse,
+    or a burst-protection cooldown is active).
+
+    Uses GEMINI_API_KEY_GROUNDING (falls back to GEMINI_API_KEY)."""
 
     now = time.time()
+
+    # Fresh cache? Just serve it, no Gemini call at all.
     if _cache["data"] is not None and (now - _cache["ts"]) < CACHE_TTL_SECONDS:
         return _cache["data"]
 
-    if not GEMINI_KEY:
-        return None
+    # Cache expired (or never populated) -- but are we still inside the
+    # burst-protection cooldown since the last attempt? If so, don't call
+    # Gemini again yet. Serve stale data if we have any, else None.
+    if (now - _cache["last_attempt"]) < MIN_CALL_INTERVAL_SECONDS:
+        return _cache["data"]  # may be None on first-ever call, or stale-but-usable
+
+    _cache["last_attempt"] = now
+
+    api_key = _get_key("GEMINI_API_KEY_GROUNDING")
+    if not api_key:
+        return _cache["data"]
 
     try:
         from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=GEMINI_KEY)
+        client = genai.Client(api_key=api_key)
 
         response = client.models.generate_content(
             model="gemini-2.5-flash",
@@ -87,9 +134,8 @@ def fetch_grounded_indicators():
         parsed = _extract_json(text)
         if not parsed:
             print("⚠️  Gemini grounding: could not parse JSON from response")
-            return None
+            return _cache["data"]
 
-        # Basic sanity checks so garbage never reaches the model/UI
         clean = {}
         if "pmi" in parsed and 30 <= float(parsed["pmi"]) <= 70:
             clean["pmi"] = round(float(parsed["pmi"]), 1)
@@ -100,8 +146,6 @@ def fetch_grounded_indicators():
             clean["unemployment"] = round(float(parsed["unemployment"]), 2)
         if "agri_gva" in parsed and -10 <= float(parsed["agri_gva"]) <= 15:
             clean["agri_gva"] = round(float(parsed["agri_gva"]), 2)
-        # Repo rate moves in small steps and rarely strays outside 2-10% in
-        # practice — reject anything wilder as a likely hallucination
         if "repo_rate" in parsed and 2 <= float(parsed["repo_rate"]) <= 10:
             clean["repo_rate"] = round(float(parsed["repo_rate"]), 2)
             if parsed.get("next_mpc_meeting"):
@@ -111,8 +155,8 @@ def fetch_grounded_indicators():
         clean["source_note"] = parsed.get("source_note", "Gemini + Google Search grounding")
         clean["fetched_at"] = time.strftime("%d %b %Y, %I:%M %p")
 
-        if len(clean) <= 2:  # only source_note/fetched_at, nothing useful parsed
-            return None
+        if len(clean) <= 2:
+            return _cache["data"]
 
         _cache["data"] = clean
         _cache["ts"] = now
@@ -121,17 +165,20 @@ def fetch_grounded_indicators():
     except Exception as e:
         print(f"⚠️  Gemini grounding failed: {type(e).__name__}: {e}")
         traceback.print_exc()
-        return None
+        return _cache["data"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
 # EXTENDED INDICATORS — second, separately-cached Gemini+Search grounding call
 # for the 10 additional high-frequency indicators shown in the
 # "Additional Indicators" dashboard section.
+# Uses GEMINI_API_KEY_EXTENDED (falls back to GEMINI_API_KEY).
+# Same burst-protection cooldown strategy as fetch_grounded_indicators() above.
 # ──────────────────────────────────────────────────────────────────────────────
 
-EXTENDED_CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 hours, same cadence as the main call
-_extended_cache = {"data": None, "ts": 0}
+EXTENDED_CACHE_TTL_SECONDS = 6 * 60 * 60
+EXTENDED_MIN_CALL_INTERVAL_SECONDS = 90
+_extended_cache = {"data": None, "ts": 0, "last_attempt": 0}
 
 EXTENDED_FIELDS_PROMPT = """Search for the most recent, official values of these India high-frequency economic indicators and return ONLY a JSON object — no markdown, no explanation, no code fences.
 
@@ -158,21 +205,31 @@ If you cannot find a confident value for a field, omit that key entirely rather 
 def fetch_extended_indicators():
     """Return a dict of the 10 extended high-frequency indicators via Gemini +
     Google Search grounding, or None if unavailable for any reason (no key,
-    API error, bad parse). Cached separately from fetch_grounded_indicators()
-    so the two calls don't share or reset each other's quota window."""
+    API error, bad parse, or burst-protection cooldown active). Cached
+    separately from fetch_grounded_indicators() so the two calls don't share
+    or reset each other's quota window.
+
+    Uses GEMINI_API_KEY_EXTENDED (falls back to GEMINI_API_KEY)."""
 
     now = time.time()
+
     if _extended_cache["data"] is not None and (now - _extended_cache["ts"]) < EXTENDED_CACHE_TTL_SECONDS:
         return _extended_cache["data"]
 
-    if not GEMINI_KEY:
-        return None
+    if (now - _extended_cache["last_attempt"]) < EXTENDED_MIN_CALL_INTERVAL_SECONDS:
+        return _extended_cache["data"]
+
+    _extended_cache["last_attempt"] = now
+
+    api_key = _get_key("GEMINI_API_KEY_EXTENDED")
+    if not api_key:
+        return _extended_cache["data"]
 
     try:
         from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=GEMINI_KEY)
+        client = genai.Client(api_key=api_key)
 
         response = client.models.generate_content(
             model="gemini-2.5-flash",
@@ -186,9 +243,8 @@ def fetch_extended_indicators():
         parsed = _extract_json(text)
         if not parsed:
             print("⚠️  Extended grounding: could not parse JSON from response")
-            return None
+            return _extended_cache["data"]
 
-        # Sanity-bound every field so a hallucinated number never reaches the UI
         clean = {}
         if "pmi_services" in parsed and 30 <= float(parsed["pmi_services"]) <= 70:
             clean["pmi_services"] = round(float(parsed["pmi_services"]), 1)
@@ -213,8 +269,8 @@ def fetch_extended_indicators():
         clean["source_note"] = parsed.get("source_note", "Gemini + Google Search grounding")
         clean["fetched_at"] = time.strftime("%d %b %Y, %I:%M %p")
 
-        if len(clean) <= 2:  # only source_note/fetched_at, nothing useful parsed
-            return None
+        if len(clean) <= 2:
+            return _extended_cache["data"]
 
         _extended_cache["data"] = clean
         _extended_cache["ts"] = now
@@ -223,29 +279,34 @@ def fetch_extended_indicators():
     except Exception as e:
         print(f"⚠️  Extended grounding failed: {type(e).__name__}: {e}")
         traceback.print_exc()
-        return None
+        return _extended_cache["data"]
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-# AI NARRATIVE ANALYSIS — cached so repeated "Analyze" clicks (or near-simultaneous
-# requests alongside the Learn & Ask chatbot) don't hammer the same Gemini key
-# and trip rate limits. Cache key includes risk_score + label so a genuinely
-# new prediction still gets a fresh narrative.
+# AI NARRATIVE ANALYSIS — cached so repeated "Analyze" clicks don't hammer the
+# same Gemini key and trip rate limits. Cache key includes risk_score + label
+# so a genuinely new prediction still gets a fresh narrative.
+# Uses GEMINI_API_KEY_ANALYZE (falls back to GEMINI_API_KEY).
 # ──────────────────────────────────────────────────────────────────────────────
 
-ANALYSIS_CACHE_TTL_SECONDS = 30 * 60  # 30 minutes
-_analysis_cache = {"text": None, "ts": 0, "key": None}
+ANALYSIS_CACHE_TTL_SECONDS = 30 * 60
+ANALYSIS_MIN_CALL_INTERVAL_SECONDS = 20  # cheap extra guard against rapid double-clicks
+_analysis_cache = {"text": None, "ts": 0, "key": None, "last_attempt": 0}
 
 
 def generate_analysis(indicators, prediction, risk_score):
     """Generate a narrative AI analysis paragraph using Gemini (no grounding
-    needed here — we already have the numbers, just want commentary)."""
+    needed here — we already have the numbers, just want commentary).
 
-    if not GEMINI_KEY:
+    Uses GEMINI_API_KEY_ANALYZE (falls back to GEMINI_API_KEY)."""
+
+    api_key = _get_key("GEMINI_API_KEY_ANALYZE")
+    if not api_key:
         return None
 
     cache_key = f"{risk_score}-{prediction.get('label')}"
     now = time.time()
+
     if (
         _analysis_cache["text"] is not None
         and _analysis_cache["key"] == cache_key
@@ -253,10 +314,17 @@ def generate_analysis(indicators, prediction, risk_score):
     ):
         return _analysis_cache["text"]
 
+    if (now - _analysis_cache["last_attempt"]) < ANALYSIS_MIN_CALL_INTERVAL_SECONDS:
+        # Someone double-clicked or two users hit it within the same window --
+        # serve whatever we last had rather than firing a second Gemini call.
+        return _analysis_cache["text"]
+
+    _analysis_cache["last_attempt"] = now
+
     try:
         from google import genai
 
-        client = genai.Client(api_key=GEMINI_KEY)
+        client = genai.Client(api_key=api_key)
 
         prompt = f"""You are an expert Indian economic analyst. Analyze these current indicators and give a concise 3-4 paragraph insight in clear, simple English.
 
@@ -289,7 +357,7 @@ Be specific to India's current economic context. Do not use markdown headers, ju
 
         if not text:
             print("⚠️  Gemini analysis: empty response text")
-            return None
+            return _analysis_cache["text"]
 
         _analysis_cache["text"] = text
         _analysis_cache["ts"] = now
@@ -297,9 +365,6 @@ Be specific to India's current economic context. Do not use markdown headers, ju
         return text
 
     except Exception as e:
-        # Print the exception TYPE too — this is what tells us whether it's
-        # a quota/rate-limit error (e.g. ResourceExhausted / 429), an auth
-        # error, or something else entirely. Plain str(e) often hides this.
         print(f"⚠️  Gemini analysis failed: {type(e).__name__}: {e}")
         traceback.print_exc()
-        return None
+        return _analysis_cache["text"]

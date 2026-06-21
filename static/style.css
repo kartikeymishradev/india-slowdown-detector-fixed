@@ -568,3 +568,56 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   max-width: 280px;
   line-height: 1.4;
 }
+
+/* ═══════════════════════════════════════════
+   HISTORICAL CHART — Custom Legend Toggles
+   ═══════════════════════════════════════════ */
+.hist-toggles {
+  display: flex;
+  gap: 20px;
+  justify-content: center;
+  padding: 10px 0;
+  flex-wrap: wrap;
+}
+.toggle-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text);
+  user-select: none;
+}
+.toggle-switch input { display: none; }
+.toggle-slider {
+  width: 34px;
+  height: 18px;
+  border-radius: 999px;
+  background: #D1D5DB;
+  position: relative;
+  transition: background .2s;
+  flex-shrink: 0;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  top: 2px;
+  left: 2px;
+  transition: transform .2s;
+  box-shadow: 0 1px 2px rgba(0,0,0,.2);
+}
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--color);
+}
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+}
+.toggle-switch input:not(:checked) ~ .toggle-label {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--border);
+}
