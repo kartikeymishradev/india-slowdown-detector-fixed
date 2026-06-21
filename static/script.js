@@ -279,7 +279,11 @@ async function runAI() {
 async function refreshAll() {
   document.getElementById('last-updated').textContent = 'Refreshing…';
   const data = await apiFetch('/api/predict');
-  if (!data) { document.getElementById('last-updated').textContent = 'Error — check connection'; return; }
+  if (!data) {
+  document.getElementById('last-updated').textContent = 'Error – check connection';
+  document.getElementById("loader").style.display = "none";
+  return;
+}
   window._cachedData = data;
 
   const sectors = data.indicators.sectors;
@@ -294,6 +298,9 @@ async function refreshAll() {
   buildFeat();
   buildHist();
   initLearnSection(data.indicators);
+
+   // Hide loader here
+  document.getElementById("loader").style.display = "none";
 }
 
 refreshAll();
