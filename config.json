@@ -1,0 +1,59 @@
+{
+  "_comment": "Update this file monthly/quarterly with latest values. No code changes needed.",
+  "_last_updated": "June 2026",
+  "_sources": "RBI / MOSPI / MoC / S&P Global / CMIE",
+
+  "macro": {
+    "repo_rate":              5.25,
+    "next_mpc_meeting":       "3–5 Aug 2026",
+    "iip_growth":             5.0,
+    "credit_growth":          7.8,
+    "agri_gva":               3.8,
+    "npa_ratio":              2.8,
+    "forex_reserves":         622.5,
+    "fiscal_deficit":         4.9,
+    "unemployment":           6.6,
+
+    "pmi_services":              58.0,
+    "gst_collection":            185000,
+    "gst_collection_prev_month": 178500,
+    "upi_volume":                16.5,
+    "electricity_demand":        150.0,
+    "railway_freight":           128.0,
+    "eway_bill_growth":          11.0,
+    "diesel_consumption_growth": 3.5,
+    "india_vix":                 13.2,
+    "fii_net_flow":              -2100
+  },
+
+  "pmi": {
+    "value": 55.0,
+    "trend_12m": [58.1, 57.9, 56.5, 57.2, 56.5, 56.4, 57.7, 58.1, 58.2, 58.1, 54.7, 55.0],
+    "sub_indices": {
+      "new_orders":  "59.2",
+      "output":      "58.1",
+      "employment":  "53.4",
+      "input_price": "57.6"
+    }
+  },
+
+  "sector_trends": {
+    "banking_12m":     [11.0, 14.5, 17.5, 16.0, 15.0, 16.0, 16.3, 16.5, 16.3, 15.0, 11.5, 7.8],
+    "agriculture_12m": [3.2, 4.5, 4.1, 3.8, 4.8, 3.1, 1.4, 0.7, 0.4, 3.5, 2.0, 3.8],
+    "employment_12m":  [7.5, 7.2, 7.0, 6.8, 6.7, 6.5, 6.5, 6.4, 6.5, 6.6, 6.6, 6.6]
+  },
+
+  "hf_indicators": {
+    "rabi_sowing_mha":      "67.2",
+    "reservoir_levels_pct": "68%",
+    "msp_wheat_per_qtl":    "2425",
+    "food_inflation_cpi":   "4.78%",
+    "deposit_growth_yoy":   "10.2%",
+    "epfo_net_additions":   "1.58M",
+    "labour_force_part":    "55.9%",
+    "rural_unemployment":   "4.2%",
+
+    "merchandise_exports_usd_b": 45.2,
+    "merchandise_imports_usd_b": 73.4
+  }
+}

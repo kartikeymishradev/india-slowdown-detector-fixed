@@ -1,0 +1,10 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <circle cx="32" cy="32" r="32" fill="#0F172A"/>
+  <path d="M16 38 L24 30 L30 35 L48 19" stroke="#60A5FA" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M40 19 H48 V27" stroke="#60A5FA" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="16" cy="38" r="2.6" fill="#60A5FA"/>
+  <circle cx="24" cy="30" r="2.6" fill="#60A5FA"/>
+  <circle cx="30" cy="35" r="2.6" fill="#60A5FA"/>
+  <circle cx="48" cy="19" r="2.6" fill="#60A5FA"/>
+  <text x="32" y="52" text-anchor="middle" font-family="-apple-system, Segoe UI, sans-serif" font-size="13" font-weight="700" fill="#EFF6FF">₹</text>
+</svg>
