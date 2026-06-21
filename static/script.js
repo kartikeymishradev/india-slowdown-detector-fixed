@@ -1,5 +1,23 @@
 // India Economic Slowdown Detector — Frontend
 
+const loadingMessages = [
+  "Analyzing economic indicators...",
+  "Building slowdown model...",
+  "Fetching live macro data...",
+  "Calculating risk score...",
+  "Generating insights..."
+];
+
+let loadingIndex = 0;
+
+const loadingInterval = setInterval(() => {
+  const loadingText = document.getElementById("loading-text");
+  if (loadingText) {
+    loadingText.textContent = loadingMessages[loadingIndex];
+    loadingIndex = (loadingIndex + 1) % loadingMessages.length;
+  }
+}, 1500);
+
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const NOW = new Date();
 function mLabel(off) {
@@ -279,7 +297,12 @@ async function runAI() {
 async function refreshAll() {
   document.getElementById('last-updated').textContent = 'Refreshing…';
   const data = await apiFetch('/api/predict');
-  if (!data) { document.getElementById('last-updated').textContent = 'Error — check connection'; return; }
+  if (!data) {
+  document.getElementById('last-updated').textContent = 'Error – check connection';
+  clearInterval(loadingInterval);
+  document.getElementById("loader").style.display = "none";
+  return;
+}
   window._cachedData = data;
 
   const sectors = data.indicators.sectors;
@@ -294,6 +317,10 @@ async function refreshAll() {
   buildFeat();
   buildHist();
   initLearnSection(data.indicators);
+
+   // Hide loader here
+  clearInterval(loadingInterval);
+document.getElementById("loader").style.display = "none";
 }
 
 refreshAll();
