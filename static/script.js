@@ -265,7 +265,22 @@ function buildHist() {
         x:{ ticks:{font:{size:11}}, grid:{display:false} },
         y:{ ticks:{font:{size:11}}, title:{display:true,text:'Value (%)',font:{size:11}} }
       },
-      plugins:{ legend:{position:'top',labels:{font:{size:11},boxWidth:12}}, tooltip:{mode:'index',intersect:false} }
+      plugins: {
+  legend: {
+    position: 'bottom',
+    align: 'center',
+    labels: {
+      boxWidth: 10,
+      boxHeight: 10,
+      padding: 12,
+      usePointStyle: true,
+      pointStyle: 'circle',
+      font: {
+        size: 10
+      }
+    }
+  }
+}
     }
   });
 }
