@@ -18,6 +18,7 @@ import os
 import json
 import time
 import re
+import traceback
 
 CACHE_TTL_SECONDS = 6 * 60 * 60  # 6 hours — plenty fresh for monthly-ish data
 _cache = {"data": None, "ts": 0}
@@ -118,7 +119,8 @@ def fetch_grounded_indicators():
         return clean
 
     except Exception as e:
-        print(f"⚠️  Gemini grounding failed: {e}")
+        print(f"⚠️  Gemini grounding failed: {type(e).__name__}: {e}")
+        traceback.print_exc()
         return None
 
 
@@ -219,8 +221,20 @@ def fetch_extended_indicators():
         return clean
 
     except Exception as e:
-        print(f"⚠️  Extended grounding failed: {e}")
+        print(f"⚠️  Extended grounding failed: {type(e).__name__}: {e}")
+        traceback.print_exc()
         return None
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# AI NARRATIVE ANALYSIS — cached so repeated "Analyze" clicks (or near-simultaneous
+# requests alongside the Learn & Ask chatbot) don't hammer the same Gemini key
+# and trip rate limits. Cache key includes risk_score + label so a genuinely
+# new prediction still gets a fresh narrative.
+# ──────────────────────────────────────────────────────────────────────────────
+
+ANALYSIS_CACHE_TTL_SECONDS = 30 * 60  # 30 minutes
+_analysis_cache = {"text": None, "ts": 0, "key": None}
 
 
 def generate_analysis(indicators, prediction, risk_score):
@@ -229,6 +243,15 @@ def generate_analysis(indicators, prediction, risk_score):
 
     if not GEMINI_KEY:
         return None
+
+    cache_key = f"{risk_score}-{prediction.get('label')}"
+    now = time.time()
+    if (
+        _analysis_cache["text"] is not None
+        and _analysis_cache["key"] == cache_key
+        and (now - _analysis_cache["ts"]) < ANALYSIS_CACHE_TTL_SECONDS
+    ):
+        return _analysis_cache["text"]
 
     try:
         from google import genai
@@ -262,8 +285,21 @@ Be specific to India's current economic context. Do not use markdown headers, ju
             model="gemini-2.5-flash",
             contents=prompt,
         )
-        return response.text
+        text = response.text
+
+        if not text:
+            print("⚠️  Gemini analysis: empty response text")
+            return None
+
+        _analysis_cache["text"] = text
+        _analysis_cache["ts"] = now
+        _analysis_cache["key"] = cache_key
+        return text
 
     except Exception as e:
-        print(f"⚠️  Gemini analysis failed: {e}")
+        # Print the exception TYPE too — this is what tells us whether it's
+        # a quota/rate-limit error (e.g. ResourceExhausted / 429), an auth
+        # error, or something else entirely. Plain str(e) often hides this.
+        print(f"⚠️  Gemini analysis failed: {type(e).__name__}: {e}")
+        traceback.print_exc()
         return None
