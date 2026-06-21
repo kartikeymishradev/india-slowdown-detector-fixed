@@ -1,5 +1,23 @@
 // India Economic Slowdown Detector — Frontend
 
+const loadingMessages = [
+  "Analyzing economic indicators...",
+  "Building slowdown model...",
+  "Fetching live macro data...",
+  "Calculating risk score...",
+  "Generating insights..."
+];
+
+let loadingIndex = 0;
+
+const loadingInterval = setInterval(() => {
+  const loadingText = document.getElementById("loading-text");
+  if (loadingText) {
+    loadingText.textContent = loadingMessages[loadingIndex];
+    loadingIndex = (loadingIndex + 1) % loadingMessages.length;
+  }
+}, 1500);
+
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const NOW = new Date();
 function mLabel(off) {
@@ -281,6 +299,7 @@ async function refreshAll() {
   const data = await apiFetch('/api/predict');
   if (!data) {
   document.getElementById('last-updated').textContent = 'Error – check connection';
+  clearInterval(loadingInterval);
   document.getElementById("loader").style.display = "none";
   return;
 }
@@ -300,7 +319,8 @@ async function refreshAll() {
   initLearnSection(data.indicators);
 
    // Hide loader here
-  document.getElementById("loader").style.display = "none";
+  clearInterval(loadingInterval);
+document.getElementById("loader").style.display = "none";
 }
 
 refreshAll();
