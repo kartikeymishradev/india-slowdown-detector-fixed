@@ -63,6 +63,20 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; b
   white-space: nowrap;
 }
 .icon-btn { background: rgba(255,255,255,0.1); border: none; color: #fff; width: 30px; height: 30px; border-radius: 6px; cursor: pointer; font-size: 15px; display: flex; align-items: center; justify-content: center; transition: background .15s; }
+.ai-refresh-btn {
+  background: rgba(37,99,235,.18);
+  border: 1px solid rgba(37,99,235,.4);
+  color: #93C5FD;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.ai-refresh-btn:hover { background: rgba(37,99,235,.32); color: #fff; }
+.ai-refresh-btn:disabled { opacity: .6; cursor: not-allowed; }
 .icon-btn:hover { background: rgba(255,255,255,0.2); }
 
 /* HERO BANNER */

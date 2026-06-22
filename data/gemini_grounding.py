@@ -7,17 +7,39 @@ model to return ONLY a strict JSON object extracted from the search results.
 
 API KEY STRATEGY
 -----------------
-Each Gemini-calling feature uses its OWN API key so that one feature's
-usage can't exhaust another feature's free-tier quota:
+Each Gemini-calling feature uses its OWN pool of API keys so that one
+feature's usage can't exhaust another feature's free-tier quota:
 
     GEMINI_API_KEY_GROUNDING  -> fetch_grounded_indicators()   (used by /api/predict)
     GEMINI_API_KEY_EXTENDED   -> fetch_extended_indicators()   (used by /api/predict)
     GEMINI_API_KEY_ANALYZE    -> generate_analysis()           (used by /api/analyze)
     GEMINI_API_KEY_LEARN      -> used directly in app.py's /api/learn route
 
-If a feature-specific key isn't set, each function falls back to the
-generic GEMINI_API_KEY env var, so this is backward compatible with a
-single-key setup.
+AUTOMATIC FALLBACK CHAIN (multiple keys per feature)
+------------------------------------------------------
+Each of the env vars above can hold ONE key, or a COMMA-SEPARATED LIST of
+keys, e.g.:
+
+    GEMINI_API_KEY_GROUNDING=AIza...key1,AIza...key2,AIza...key3
+
+When a feature needs to call Gemini, it tries each key in the list in
+order. If a key returns a quota/rate-limit error (HTTP 429 / RESOURCE_EXHAUSTED),
+that key is marked "exhausted" for the rest of the day (since the free tier
+limit is a DAILY quota, not per-minute) and the NEXT key in the list is tried
+automatically — no manual .env editing or redeploying required mid-day.
+
+If a feature-specific env var isn't set at all, it falls back to the shared
+GEMINI_API_KEY env var (which can also be a comma-separated list), so this
+stays backward compatible with a single-key setup.
+
+Exhausted-key tracking is in-memory and per-day: once a key 429s, we remember
+its "cooldown until" timestamp (rounded up to the next UTC midnight, matching
+Gemini's free-tier daily reset) and skip straight past it on later calls
+without wasting a real API round-trip finding out it's still exhausted.
+Note: on serverless platforms (Vercel) this in-memory tracking only persists
+within a single warm container, so a cold start may "forget" that a key was
+exhausted and re-try it once — this is harmless, it'll just get a quick 429
+and move to the next key in the chain.
 
 BURST PROTECTION (important for /api/predict)
 ------------------------------------------------
@@ -43,6 +65,7 @@ import os
 import json
 import time
 import re
+import tempfile
 import traceback
 
 CACHE_TTL_SECONDS = 6 * 60 * 60        # 6 hours — normal "data still fresh" window
@@ -52,10 +75,140 @@ MIN_CALL_INTERVAL_SECONDS = 90          # hard floor: never call Gemini more oft
 _cache = {"data": None, "ts": 0, "last_attempt": 0}
 
 
-def _get_key(specific_env_var):
-    """Look up a feature-specific Gemini key, falling back to the shared
-    GEMINI_API_KEY if the specific one isn't set."""
-    return os.environ.get(specific_env_var) or os.environ.get("GEMINI_API_KEY")
+# ──────────────────────────────────────────────────────────────────────────────
+# DISK-BASED PERSISTENCE
+# ──────────────────────────────────────────────────────────────────────────────
+# On Vercel (serverless) the in-memory dicts above can be wiped between
+# invocations whenever a cold start spins up a fresh container. To make the
+# "last refreshed X minutes ago" badge and the manual-refresh-only behavior
+# actually reliable, we ALSO persist the cached grounding data to a JSON file
+# on disk (Vercel's /tmp is writable and tends to survive across warm
+# invocations of the same container, though not guaranteed forever).
+#
+# This is a best-effort durability layer, not a database — if the file is
+# missing or unreadable for any reason, we just fall back to the in-memory
+# state (which itself may be None on a true cold start), and the caller's
+# existing config.json fallback kicks in as the final safety net.
+
+_CACHE_FILE = os.path.join(
+    os.environ.get("GROUNDING_CACHE_DIR", tempfile.gettempdir()), "grounding_cache.json"
+)
+
+
+def _load_disk_cache():
+    """Load persisted cache state from disk into the in-memory dicts, once,
+    on module import. Silently does nothing if the file doesn't exist or is
+    corrupt -- this must never crash app startup."""
+    try:
+        if not os.path.exists(_CACHE_FILE):
+            return
+        with open(_CACHE_FILE, "r") as f:
+            saved = json.load(f)
+        if "grounding" in saved:
+            _cache.update(saved["grounding"])
+        if "extended" in saved:
+            _extended_cache.update(saved["extended"])
+    except Exception as e:
+        print(f"⚠️  Could not load grounding cache from disk: {e}")
+
+
+def _save_disk_cache():
+    """Persist the current in-memory cache state to disk. Best-effort --
+    if /tmp isn't writable for some reason, we just keep running on the
+    in-memory cache for the rest of this process's lifetime."""
+    try:
+        with open(_CACHE_FILE, "w") as f:
+            json.dump({"grounding": _cache, "extended": _extended_cache}, f)
+    except Exception as e:
+        print(f"⚠️  Could not save grounding cache to disk: {e}")
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MULTI-KEY FALLBACK CHAIN
+# ──────────────────────────────────────────────────────────────────────────────
+
+# key string -> unix timestamp until which this key should be skipped
+# (because it last failed with a quota/rate-limit error)
+_exhausted_until = {}
+
+
+def _is_quota_error(exc):
+    """True if this exception looks like a Gemini quota/rate-limit error
+    (HTTP 429 / RESOURCE_EXHAUSTED), as opposed to some other failure
+    (bad key, network error, etc.) that retrying a different key won't fix
+    but that also isn't worth blacklisting a key over."""
+    msg = str(exc)
+    name = type(exc).__name__
+    return (
+        "429" in msg
+        or "RESOURCE_EXHAUSTED" in msg
+        or "RESOURCE_EXHAUSTED" in name
+        or "quota" in msg.lower()
+    )
+
+
+def _seconds_until_next_utc_midnight():
+    """Gemini's free-tier daily quota resets at midnight UTC (Pacific time
+    for some products, but the per-day quota in practice resets close to
+    UTC midnight) — we use UTC midnight as a safe, slightly conservative
+    cooldown so an exhausted key isn't retried again until the quota almost
+    certainly has reset."""
+    now = time.time()
+    seconds_today = now % 86400
+    return 86400 - seconds_today + 60  # +60s safety margin
+
+
+def _get_key_pool(specific_env_var):
+    """Return an ordered list of candidate API keys for a feature.
+
+    Reads the feature-specific env var (which may be a single key or a
+    comma-separated list of keys). If that env var isn't set, falls back
+    to the shared GEMINI_API_KEY env var (also comma-separated-list-aware).
+    Keys already known to be exhausted today are filtered out, but if ALL
+    keys are exhausted we still return the full original list — better to
+    let the real API call fail with a clear error than to silently return
+    nothing when a key might have recovered."""
+    raw = os.environ.get(specific_env_var) or os.environ.get("GEMINI_API_KEY") or ""
+    keys = [k.strip() for k in raw.split(",") if k.strip()]
+    if not keys:
+        return []
+
+    now = time.time()
+    fresh = [k for k in keys if _exhausted_until.get(k, 0) <= now]
+    return fresh if fresh else keys
+
+
+def _call_with_fallback(api_key_pool, make_request):
+    """Try make_request(api_key) for each key in api_key_pool, in order.
+    On a quota/rate-limit error, mark that key exhausted until the next
+    UTC midnight and move to the next key. On any other exception, or once
+    every key has been tried, re-raise the last exception so the caller's
+    existing except-block / fallback-to-cache logic still applies.
+
+    Returns the result of the first successful call."""
+    last_exc = None
+    for api_key in api_key_pool:
+        try:
+            return make_request(api_key)
+        except Exception as e:
+            last_exc = e
+            if _is_quota_error(e):
+                cooldown = _seconds_until_next_utc_midnight()
+                _exhausted_until[api_key] = time.time() + cooldown
+                print(
+                    f"⚠️  Gemini key ending …{api_key[-6:]} hit quota limit, "
+                    f"marking exhausted for ~{int(cooldown/3600)}h, trying next key"
+                )
+                continue  # try the next key in the pool
+            else:
+                # Not a quota error (bad key, network issue, etc.) -- no
+                # point burning through the rest of the pool for this one,
+                # but we still let the caller's except-block handle it.
+                raise
+    # Every key in the pool was exhausted (or pool was empty)
+    if last_exc:
+        raise last_exc
+    raise RuntimeError("No Gemini API keys configured for this feature")
 
 
 FIELDS_PROMPT = """Search for the most recent, official values of these India economic indicators and return ONLY a JSON object — no markdown, no explanation, no code fences.
@@ -91,17 +244,30 @@ def _extract_json(text):
         return None
 
 
-def fetch_grounded_indicators():
+def fetch_grounded_indicators(force=False):
     """Return a dict of live-ish indicators via Gemini + Google Search grounding,
     or None if unavailable for any reason (no key, API error, bad parse,
     or a burst-protection cooldown is active).
 
-    Uses GEMINI_API_KEY_GROUNDING (falls back to GEMINI_API_KEY)."""
+    By default (force=False) this NEVER calls Gemini itself -- it only
+    returns whatever is already in the cache (in-memory or disk-persisted),
+    however old that is. This is what lets /api/predict be called on every
+    page load without ever silently burning quota in the background.
+
+    Pass force=True to actually call Gemini and refresh the cache -- this is
+    what the manual "Refresh AI Data" button (and the periodic background
+    timer) should use, via refresh_all_grounding() below.
+
+    Uses GEMINI_API_KEY_GROUNDING (comma-separated list supported, falls back
+    to GEMINI_API_KEY). Automatically tries the next key in the pool if one
+    hits its daily quota."""
 
     now = time.time()
 
-    # Fresh cache? Just serve it, no Gemini call at all.
-    if _cache["data"] is not None and (now - _cache["ts"]) < CACHE_TTL_SECONDS:
+    if not force:
+        # Read-only path: just hand back whatever we've got, no Gemini call,
+        # no matter how stale. Freshness is now entirely the job of the
+        # manual/periodic refresh path.
         return _cache["data"]
 
     # Cache expired (or never populated) -- but are we still inside the
@@ -112,23 +278,25 @@ def fetch_grounded_indicators():
 
     _cache["last_attempt"] = now
 
-    api_key = _get_key("GEMINI_API_KEY_GROUNDING")
-    if not api_key:
+    key_pool = _get_key_pool("GEMINI_API_KEY_GROUNDING")
+    if not key_pool:
         return _cache["data"]
 
     try:
         from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=api_key)
+        def _request(api_key):
+            client = genai.Client(api_key=api_key)
+            return client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=FIELDS_PROMPT,
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                ),
+            )
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=FIELDS_PROMPT,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-            ),
-        )
+        response = _call_with_fallback(key_pool, _request)
 
         text = response.text or ""
         parsed = _extract_json(text)
@@ -160,6 +328,7 @@ def fetch_grounded_indicators():
 
         _cache["data"] = clean
         _cache["ts"] = now
+        _save_disk_cache()
         return clean
 
     except Exception as e:
@@ -172,13 +341,18 @@ def fetch_grounded_indicators():
 # EXTENDED INDICATORS — second, separately-cached Gemini+Search grounding call
 # for the 10 additional high-frequency indicators shown in the
 # "Additional Indicators" dashboard section.
-# Uses GEMINI_API_KEY_EXTENDED (falls back to GEMINI_API_KEY).
-# Same burst-protection cooldown strategy as fetch_grounded_indicators() above.
+# Uses GEMINI_API_KEY_EXTENDED (comma-separated list supported, falls back to
+# GEMINI_API_KEY). Same burst-protection cooldown + key-fallback strategy as
+# fetch_grounded_indicators() above.
 # ──────────────────────────────────────────────────────────────────────────────
 
 EXTENDED_CACHE_TTL_SECONDS = 6 * 60 * 60
 EXTENDED_MIN_CALL_INTERVAL_SECONDS = 90
 _extended_cache = {"data": None, "ts": 0, "last_attempt": 0}
+
+# Now that both _cache and _extended_cache exist, try to hydrate them from
+# whatever was last persisted to disk (best-effort, see _load_disk_cache above).
+_load_disk_cache()
 
 EXTENDED_FIELDS_PROMPT = """Search for the most recent, official values of these India high-frequency economic indicators and return ONLY a JSON object — no markdown, no explanation, no code fences.
 
@@ -202,18 +376,23 @@ Respond with strictly this JSON shape and nothing else:
 If you cannot find a confident value for a field, omit that key entirely rather than guessing."""
 
 
-def fetch_extended_indicators():
+def fetch_extended_indicators(force=False):
     """Return a dict of the 10 extended high-frequency indicators via Gemini +
     Google Search grounding, or None if unavailable for any reason (no key,
     API error, bad parse, or burst-protection cooldown active). Cached
     separately from fetch_grounded_indicators() so the two calls don't share
     or reset each other's quota window.
 
-    Uses GEMINI_API_KEY_EXTENDED (falls back to GEMINI_API_KEY)."""
+    By default (force=False) this NEVER calls Gemini -- only refresh_all_grounding()
+    (force=True) does, via the manual "Refresh AI Data" button or the periodic
+    background timer.
+
+    Uses GEMINI_API_KEY_EXTENDED (comma-separated list supported, falls back
+    to GEMINI_API_KEY)."""
 
     now = time.time()
 
-    if _extended_cache["data"] is not None and (now - _extended_cache["ts"]) < EXTENDED_CACHE_TTL_SECONDS:
+    if not force:
         return _extended_cache["data"]
 
     if (now - _extended_cache["last_attempt"]) < EXTENDED_MIN_CALL_INTERVAL_SECONDS:
@@ -221,23 +400,25 @@ def fetch_extended_indicators():
 
     _extended_cache["last_attempt"] = now
 
-    api_key = _get_key("GEMINI_API_KEY_EXTENDED")
-    if not api_key:
+    key_pool = _get_key_pool("GEMINI_API_KEY_EXTENDED")
+    if not key_pool:
         return _extended_cache["data"]
 
     try:
         from google import genai
         from google.genai import types
 
-        client = genai.Client(api_key=api_key)
+        def _request(api_key):
+            client = genai.Client(api_key=api_key)
+            return client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=EXTENDED_FIELDS_PROMPT,
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                ),
+            )
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=EXTENDED_FIELDS_PROMPT,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-            ),
-        )
+        response = _call_with_fallback(key_pool, _request)
 
         text = response.text or ""
         parsed = _extract_json(text)
@@ -274,6 +455,7 @@ def fetch_extended_indicators():
 
         _extended_cache["data"] = clean
         _extended_cache["ts"] = now
+        _save_disk_cache()
         return clean
 
     except Exception as e:
@@ -286,7 +468,8 @@ def fetch_extended_indicators():
 # AI NARRATIVE ANALYSIS — cached so repeated "Analyze" clicks don't hammer the
 # same Gemini key and trip rate limits. Cache key includes risk_score + label
 # so a genuinely new prediction still gets a fresh narrative.
-# Uses GEMINI_API_KEY_ANALYZE (falls back to GEMINI_API_KEY).
+# Uses GEMINI_API_KEY_ANALYZE (comma-separated list supported, falls back to
+# GEMINI_API_KEY).
 # ──────────────────────────────────────────────────────────────────────────────
 
 ANALYSIS_CACHE_TTL_SECONDS = 30 * 60
@@ -298,10 +481,11 @@ def generate_analysis(indicators, prediction, risk_score):
     """Generate a narrative AI analysis paragraph using Gemini (no grounding
     needed here — we already have the numbers, just want commentary).
 
-    Uses GEMINI_API_KEY_ANALYZE (falls back to GEMINI_API_KEY)."""
+    Uses GEMINI_API_KEY_ANALYZE (comma-separated list supported, falls back
+    to GEMINI_API_KEY)."""
 
-    api_key = _get_key("GEMINI_API_KEY_ANALYZE")
-    if not api_key:
+    key_pool = _get_key_pool("GEMINI_API_KEY_ANALYZE")
+    if not key_pool:
         return None
 
     cache_key = f"{risk_score}-{prediction.get('label')}"
@@ -323,8 +507,6 @@ def generate_analysis(indicators, prediction, risk_score):
 
     try:
         from google import genai
-
-        client = genai.Client(api_key=api_key)
 
         prompt = f"""You are an expert Indian economic analyst. Analyze these current indicators and give a concise 3-4 paragraph insight in clear, simple English.
 
@@ -349,10 +531,14 @@ Structure your answer as:
 
 Be specific to India's current economic context. Do not use markdown headers, just flowing paragraphs."""
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-        )
+        def _request(api_key):
+            client = genai.Client(api_key=api_key)
+            return client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+            )
+
+        response = _call_with_fallback(key_pool, _request)
         text = response.text
 
         if not text:
@@ -368,3 +554,41 @@ Be specific to India's current economic context. Do not use markdown headers, ju
         print(f"⚠️  Gemini analysis failed: {type(e).__name__}: {e}")
         traceback.print_exc()
         return _analysis_cache["text"]
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# MANUAL / PERIODIC REFRESH — used by the "Refresh AI Data" button and the
+# frontend's background timer. This is the ONLY path that actually calls
+# Gemini for the grounding + extended indicators; /api/predict always reads
+# whatever this last saved (see force=False default above).
+# ──────────────────────────────────────────────────────────────────────────────
+
+def refresh_all_grounding():
+    """Force-refresh both the main grounding indicators and the extended
+    indicators by calling Gemini (respecting the burst-protection cooldown
+    and multi-key fallback chain on each). Returns a small status dict the
+    /api/refresh-grounding route can hand back to the frontend.
+
+    This never raises -- each underlying fetch already swallows its own
+    exceptions and returns the last-known-good cached value on failure."""
+    grounding_result = fetch_grounded_indicators(force=True)
+    extended_result = fetch_extended_indicators(force=True)
+    return {
+        "grounding_updated": grounding_result is not None,
+        "extended_updated": extended_result is not None,
+        "grounding_last_updated": _cache.get("ts", 0),
+        "extended_last_updated": _extended_cache.get("ts", 0),
+    }
+
+
+def get_grounding_status():
+    """Lightweight status info for the frontend's 'Last refreshed X min ago'
+    badge -- how old is each cache right now, in seconds. Returns None for a
+    timestamp if that cache has never been successfully populated."""
+    now = time.time()
+    g_ts = _cache.get("ts", 0)
+    e_ts = _extended_cache.get("ts", 0)
+    return {
+        "grounding_age_seconds": int(now - g_ts) if g_ts else None,
+        "extended_age_seconds": int(now - e_ts) if e_ts else None,
+    }
