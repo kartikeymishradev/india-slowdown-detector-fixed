@@ -98,8 +98,8 @@ function setMacro(data) {
 
   const SOURCE_BADGE = {
     live:         '<span class="src-badge src-live" title="Fetched live from external API">🟢 Live</span>',
-    ai_grounded:  '<span class="src-badge src-ai" title="Fetched via Gemini + Google Search grounding">🔵 AI-grounded</span>',
-    manual:       '<span class="src-badge src-manual" title="Manually updated in config.json">🟡 Manual</span>',
+    ai_grounded:  ageBadge(data.grounding_status?.grounding_age_seconds, 'src-ai', '🔵'),
+    manual:       ageBadge(data.grounding_status?.grounding_age_seconds, 'src-manual', '🟡'),
   };
   const BADGE_TARGETS = {
     gdp_growth:'m-gdp-src', cpi:'m-cpi-src', repo_rate:'m-repo-src',
@@ -109,6 +109,23 @@ function setMacro(data) {
     const el = document.getElementById(elId);
     if (el) el.innerHTML = SOURCE_BADGE[fs[field] || 'manual'];
   });
+}
+
+// Builds a "Last refreshed X min ago" badge instead of a static "AI-grounded"/
+// "Manual" label. ageSeconds is how long ago the grounding cache was last
+// successfully populated (from the backend's grounding_status); null/undefined
+// means it has never been successfully fetched yet (still on config.json defaults).
+function ageBadge(ageSeconds, cls, dot) {
+  let label;
+  if (ageSeconds == null) {
+    label = 'Not yet fetched';
+  } else if (ageSeconds < 60) {
+    label = 'Refreshed just now';
+  } else {
+    const mins = Math.round(ageSeconds / 60);
+    label = `Refreshed ${mins} min ago`;
+  }
+  return `<span class="src-badge ${cls}" title="Time since this indicator's AI-grounded data was last refreshed">${dot} ${label}</span>`;
 }
 
 function buildGauge(risk) {
@@ -347,6 +364,63 @@ document.getElementById("loader").style.display = "none";
 }
 
 refreshAll();
+
+// ═══════════════════════════════════════════
+//  AI-GROUNDED DATA REFRESH (manual button + background timer)
+// ═══════════════════════════════════════════
+// /api/predict NEVER triggers a new Gemini call on its own (see the force=False
+// default in gemini_grounding.py) -- it only ever reads whatever this refresh
+// path last saved. That's what this section is responsible for:
+//   1. A manual "Refresh AI Data" button the user can click any time.
+//   2. A background timer that calls the same refresh endpoint automatically
+//      every ~5-6 minutes, without the user needing to reload the page.
+// After either path runs, we re-call refreshAll() so the dashboard re-renders
+// with whatever (possibly updated) data is now cached on the server.
+
+const AI_AUTO_REFRESH_MS = 5.5 * 60 * 1000; // ~5.5 minutes
+let aiRefreshInFlight = false;
+
+async function refreshAIData(isAuto) {
+  if (aiRefreshInFlight) return; // don't stack overlapping refresh calls
+  aiRefreshInFlight = true;
+
+  const btn = document.getElementById('ai-refresh-btn');
+  if (btn && !isAuto) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Refreshing…';
+  }
+
+  try {
+    await fetch('/api/refresh-grounding', { method: 'POST' });
+  } catch {
+    // Network hiccup -- silently ignore, especially for the automatic/background
+    // call. The next page interaction or timer tick will just try again.
+  }
+
+  // Pull the (possibly now-updated) cached data back into the dashboard.
+  await refreshAll();
+
+  if (btn && !isAuto) {
+    btn.disabled = false;
+    btn.textContent = '↻ Refresh AI Data';
+  }
+  aiRefreshInFlight = false;
+}
+
+function initAIRefreshButton() {
+  const btn = document.getElementById('ai-refresh-btn');
+  if (btn && !btn.dataset.bound) {
+    btn.dataset.bound = 'true';
+    btn.addEventListener('click', () => refreshAIData(false));
+  }
+}
+initAIRefreshButton();
+
+// Background auto-refresh: silently re-fetch AI-grounded data every ~5-6 min,
+// independent of whether the user reloads the page. A plain page reload in
+// between these ticks will NOT trigger an extra Gemini call -- it just shows
+// whatever is currently cached.
+setInterval(() => refreshAIData(true), AI_AUTO_REFRESH_MS);
 
 // ═══════════════════════════════════════════
 //  LEARN & ASK SECTION

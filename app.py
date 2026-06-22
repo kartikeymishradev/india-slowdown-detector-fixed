@@ -16,7 +16,13 @@ load_dotenv()
 
 sys.path.insert(0, os.path.dirname(__file__))
 from data.fetch_data import get_all_indicators, build_feature_vector
-from data.gemini_grounding import generate_analysis
+from data.gemini_grounding import (
+    generate_analysis,
+    _get_key_pool,
+    _call_with_fallback,
+    refresh_all_grounding,
+    get_grounding_status,
+)
 
 app = Flask(__name__)
 CORS(app)
@@ -139,8 +145,26 @@ def api_predict():
         "prediction": prediction,
         "risk_score": risk_score,
         "indicators": data,
-        "model_loaded": model is not None
+        "model_loaded": model is not None,
+        "grounding_status": get_grounding_status(),
     })
+
+
+@app.route("/api/refresh-grounding", methods=["POST"])
+def api_refresh_grounding():
+    """Manually (or periodically, via the frontend's background timer)
+    force-refresh the Gemini-grounded indicators (main + extended). This is
+    the ONLY route that actually triggers new Gemini calls for grounding
+    data -- /api/predict always reads whatever this last saved, so normal
+    page loads/reloads never silently burn quota in the background.
+
+    Safe to call as often as the frontend likes -- the burst-protection
+    cooldown inside fetch_grounded_indicators()/fetch_extended_indicators()
+    (MIN_CALL_INTERVAL_SECONDS) means a real Gemini call will only actually
+    happen at most once every ~90 seconds per indicator set, regardless of
+    how many refresh requests come in."""
+    status = refresh_all_grounding()
+    return jsonify(status)
 
 
 @app.route("/api/sector/<sector_id>")
@@ -187,12 +211,14 @@ def api_learn():
     """
     Gemini-powered chatbot for the Learn & Ask section.
     Answers economy questions in simple, plain English for everyday readers.
-    Uses GEMINI_API_KEY_LEARN if set, otherwise falls back to the shared
-    GEMINI_API_KEY, so this stays backward compatible with a single-key setup.
+    Uses GEMINI_API_KEY_LEARN (comma-separated list of keys supported) if set,
+    otherwise falls back to the shared GEMINI_API_KEY, so this stays backward
+    compatible with a single-key setup. If one key in the list hits its daily
+    quota, the next key is tried automatically.
     """
-    learn_key = os.environ.get("GEMINI_API_KEY_LEARN") or os.environ.get("GEMINI_API_KEY")
+    key_pool = _get_key_pool("GEMINI_API_KEY_LEARN")
 
-    if not learn_key:
+    if not key_pool:
         return jsonify({"answer": "The Gemini API key isn't configured on this server. Please contact the admin."}), 200
 
     payload  = request.get_json(silent=True) or {}
@@ -207,8 +233,6 @@ def api_learn():
 
     try:
         from google import genai
-
-        client = genai.Client(api_key=learn_key)
 
         # Build conversation history for context
         history_text = ""
@@ -232,10 +256,14 @@ User's question: {question}
 
 Your answer:"""
 
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt,
-        )
+        def _request(api_key):
+            client = genai.Client(api_key=api_key)
+            return client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=prompt,
+            )
+
+        response = _call_with_fallback(key_pool, _request)
 
         answer = (response.text or "").strip()
         if not answer:
@@ -252,23 +280,45 @@ Your answer:"""
         }), 200
 
 
+def _count_keys(env_var):
+    raw = os.environ.get(env_var) or ""
+    return len([k.strip() for k in raw.split(",") if k.strip()])
+
+
 @app.route("/api/health")
 def health():
+    shared_count = _count_keys("GEMINI_API_KEY")
     return jsonify({
         "status": "ok",
         "model_loaded": model is not None,
         "gemini_keys_configured": {
-            "shared": bool(os.environ.get("GEMINI_API_KEY")),
-            "grounding": bool(os.environ.get("GEMINI_API_KEY_GROUNDING")),
-            "extended": bool(os.environ.get("GEMINI_API_KEY_EXTENDED")),
-            "analyze": bool(os.environ.get("GEMINI_API_KEY_ANALYZE")),
-            "learn": bool(os.environ.get("GEMINI_API_KEY_LEARN")),
+            "shared": shared_count,
+            "grounding": _count_keys("GEMINI_API_KEY_GROUNDING") or shared_count,
+            "extended": _count_keys("GEMINI_API_KEY_EXTENDED") or shared_count,
+            "analyze": _count_keys("GEMINI_API_KEY_ANALYZE") or shared_count,
+            "learn": _count_keys("GEMINI_API_KEY_LEARN") or shared_count,
         }
     })
+
+
+def _startup_refresh():
+    """On first server start, do one background Gemini refresh so the
+    'Not yet fetched' badge never appears for the very first visitor."""
+    import time, threading
+    def _run():
+        time.sleep(3)   # let Flask finish binding before firing Gemini calls
+        try:
+            print("🔄 Startup: triggering initial AI-grounded data refresh…")
+            refresh_all_grounding()
+            print("✅ Startup refresh complete.")
+        except Exception as e:
+            print(f"⚠️  Startup refresh failed (non-fatal): {e}")
+    threading.Thread(target=_run, daemon=True).start()
 
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_ENV") == "development"
+    _startup_refresh()
     print(f"🚀 Starting server on http://localhost:{port}")
     app.run(host="0.0.0.0", port=port, debug=debug)
