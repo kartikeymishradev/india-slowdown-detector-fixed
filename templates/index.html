@@ -4,321 +4,456 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>India Economic Slowdown Detector</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
+<!-- ── LOADER ── -->
 <div id="loader">
-  <div class="spinner"></div>
-  <p id="loading-text">Initializing...</p>
-  <p id="loading-note">This may take up to 30 seconds due to live economic data processing.</p>
-</div>
-
-<nav class="navbar">
-  <div class="nav-inner">
-    <div class="nav-brand">
-      <span class="brand-pulse"></span>
-      <span class="brand-title">India Economic Slowdown Detector</span>
-      <span class="brand-badge">AI-Powered</span>
-    </div>
-    <div class="nav-right">
-      <span class="update-tag" id="last-updated">Loading…</span>
-      <button class="ai-refresh-btn" id="ai-refresh-btn" title="Force-fetch fresh AI-grounded data from Gemini, then reload dashboard">↻ Refresh AI Data</button>
-    </div>
-  </div>
-</nav>
-
-<div class="hero-banner" id="status-banner">
-  <div class="hero-inner">
-    <div class="hero-left">
-      <div class="hero-status" id="hero-status">Analyzing…</div>
-      <div class="hero-sub" id="hero-sub">Fetching live indicators across multiple sectors</div>
-    </div>
-    <div class="hero-score-wrap">
-      <div class="hero-score-label">Risk Score</div>
-      <div class="hero-score" id="hero-score">—</div>
-      <div class="hero-score-sub">out of 100</div>
-    </div>
+  <div class="loader-inner">
+    <div class="loader-logo">IE</div>
+    <div class="loader-ring"><div class="loader-arc"></div></div>
+    <p id="loading-text">Initializing…</p>
+    <p id="loading-note">Fetching live economic data · This may take up to 30 seconds</p>
   </div>
 </div>
 
-<main class="container">
+<!-- ══════════════════════════════════════════
+     APP SHELL — Sidebar + Main
+════════════════════════════════════════════ -->
+<div class="app-shell">
 
-  <!-- Macro Strip -->
-  <div class="macro-strip">
-    <div class="macro-item">
-      <div class="macro-label">GDP Growth</div>
-      <div class="macro-val" id="m-gdp">—</div>
-      <div class="macro-delta down">↓ from 8.2%</div>
-      <div class="src-badge-wrap" id="m-gdp-src"></div>
-    </div>
-    <div class="macro-item">
-      <div class="macro-label">CPI Inflation</div>
-      <div class="macro-val" id="m-cpi">—</div>
-      <div class="macro-delta" id="m-cpi-d">—</div>
-      <div class="src-badge-wrap" id="m-cpi-src"></div>
-    </div>
-    <div class="macro-item">
-      <div class="macro-label">Repo Rate</div>
-      <div class="macro-val" id="m-repo">—</div>
-      <div class="macro-delta neutral">RBI Policy</div>
-      <div class="src-badge-wrap" id="m-repo-src"></div>
-    </div>
-    <div class="macro-item">
-      <div class="macro-label">INR / USD</div>
-      <div class="macro-val" id="m-fx">—</div>
-      <div class="macro-delta down">↑ Weakening</div>
-      <div class="src-badge-wrap" id="m-fx-src"></div>
-    </div>
-    <div class="macro-item">
-      <div class="macro-label">Exports YoY</div>
-      <div class="macro-val" id="m-exp">—</div>
-      <div class="macro-delta down" id="m-exp-d">—</div>
-      <div class="src-badge-wrap" id="m-exp-src"></div>
-    </div>
-    <div class="macro-item">
-      <div class="macro-label">Unemployment</div>
-      <div class="macro-val" id="m-unemp">—</div>
-      <div class="macro-delta" id="m-unemp-d">Urban CMIE</div>
-      <div class="src-badge-wrap" id="m-unemp-src"></div>
-    </div>
-  </div>
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
 
-  <div class="grid-2">
-
-    <!-- ML Prediction Card -->
-    <div class="card">
-      <div class="card-head">
-        <span class="card-title">ML Model Prediction</span>
-        <span class="card-tag">Random Forest + GBM</span>
-      </div>
-      <div class="pred-wrap">
-        <div class="gauge-box">
-          <canvas id="gaugeChart" width="180" height="110"></canvas>
-          <div class="gauge-num" id="gauge-num">—</div>
-        </div>
-        <div class="pred-info">
-          <div class="pred-pill" id="pred-pill">—</div>
-          <div class="pred-conf">Confidence: <b id="pred-conf">—</b></div>
-          <div class="prob-list" id="prob-list"></div>
-          <div class="model-stats">
-            <div class="stat-row"><span>CV Accuracy</span><b>78.6%</b></div>
-            <div class="stat-row"><span>Training data</span><b>32 quarters</b></div>
-            <div class="stat-row"><span>Algorithm</span><b>Ensemble</b></div>
-          </div>
-        </div>
+    <!-- Brand -->
+    <div class="sb-brand">
+      <div class="sb-logo">IE</div>
+      <div class="sb-brand-text">
+        <div class="sb-brand-title">India Detector</div>
+        <div class="sb-brand-sub">AI-Powered · Live</div>
       </div>
     </div>
 
-    <!-- Sector Cards -->
-    <div class="card">
-      <div class="card-head">
-        <span class="card-title">Sector Health</span>
-        <span class="card-tag">Click to drill down</span>
+    <!-- Status pill -->
+    <div class="sb-status-wrap">
+      <div class="sb-status" id="sb-status">
+        <span class="sb-status-dot"></span>
+        <span id="sb-status-label">Analyzing…</span>
       </div>
-      <div class="sector-grid" id="sector-grid"></div>
-    </div>
-
-    <!-- Additional Indicators -->
-    <div class="card">
-      <div class="card-head">
-        <span class="card-title">Additional Indicators</span>
-        <span class="card-tag">GST · NPCI · Grid-India · Railways · NSE</span>
-      </div>
-      <div class="extra-grid" id="extra-grid"></div>
-    </div>
-
-  </div>
-
-  <!-- Trend Chart -->
-  <div class="card">
-    <div class="card-head">
-      <span class="card-title">12-Month Trend</span>
-      <div class="tab-row" id="sector-tabs"></div>
-    </div>
-    <div class="chart-legend">
-      <span><i class="dot" style="background:#3B82F6"></i>Value</span>
-      <span><i class="dot" style="background:#22C55E"></i>Avg</span>
-      <span><i class="dot red-dash"></i>Alert threshold</span>
-    </div>
-    <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
-  </div>
-
-  <div class="grid-2">
-
-    <!-- AI Analysis -->
-    <div class="card">
-      <div class="card-head">
-        <span class="card-title">AI Analysis</span>
-        <button class="run-btn" id="ai-btn" onclick="runAI()">▶ Run Analysis</button>
-      </div>
-      <div class="ai-box" id="ai-box">
-        <div class="ai-placeholder">Click "Run Analysis" to get AI-powered economic insights based on current live indicators.</div>
+      <div class="sb-score-block">
+        <div class="sb-score-num" id="sb-score-num">—</div>
+        <div class="sb-score-label">Risk / 100</div>
+        <div class="sb-score-bar"><div class="sb-score-fill" id="sb-score-fill"></div></div>
       </div>
     </div>
 
-    <!-- Feature Importance -->
-    <div class="card">
-      <div class="card-head">
-        <span class="card-title">Feature Importance</span>
-        <span class="card-tag">Random Forest</span>
-      </div>
-      <div class="chart-wrap" style="height:210px"><canvas id="featChart"></canvas></div>
+    <!-- Nav -->
+    <nav class="sb-nav">
+      <a class="sb-link active" href="#section-overview" onclick="sbNavigate(this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Overview
+      </a>
+      <a class="sb-link" href="#section-sectors" onclick="sbNavigate(this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Sectors
+      </a>
+      <a class="sb-link" href="#section-indicators" onclick="sbNavigate(this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+        Indicators
+      </a>
+      <a class="sb-link" href="#section-trends" onclick="sbNavigate(this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+        Trends
+      </a>
+      <a class="sb-link" href="#section-ai" onclick="sbNavigate(this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+        AI Analysis
+      </a>
+      <a class="sb-link" href="#section-learn" onclick="sbNavigate(this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        Learn & Ask
+      </a>
+      <a class="sb-link" href="#section-about" onclick="sbNavigate(this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        About
+      </a>
+    </nav>
+
+    <!-- Update time -->
+    <div class="sb-footer">
+      <div class="sb-update-label">Last updated</div>
+      <div class="sb-update-val" id="last-updated">—</div>
     </div>
 
-  </div>
+  </aside>
 
-  <!-- HF Indicators -->
-  <div class="card">
-    <div class="card-head">
-      <span class="card-title">High-Frequency Indicators</span>
-      <span class="card-tag">RBI · MOSPI · CMIE · MoC</span>
-    </div>
-    <div class="hf-grid" id="hf-grid"></div>
-  </div>
+  <!-- ── MAIN CONTENT ── -->
+  <main class="main-content">
 
-  <!-- Historical Comparison -->
-  <div class="card">
-    <div class="card-head">
-      <span class="card-title">Historical Slowdown Comparison</span>
-      <span class="card-tag">2019 · COVID · Current</span>
-    </div>
-    <div class="hist-toggles" id="hist-toggles">
-      <label class="toggle-switch">
-        <input type="checkbox" id="toggle-gdp" checked>
-        <span class="toggle-slider" style="--color:#3B82F6"></span>
-        <span class="toggle-label">GDP Growth (%)</span>
-      </label>
-      <label class="toggle-switch">
-        <input type="checkbox" id="toggle-exports" checked>
-        <span class="toggle-slider" style="--color:#F59E0B"></span>
-        <span class="toggle-label">Export Growth (%)</span>
-      </label>
-      <label class="toggle-switch">
-        <input type="checkbox" id="toggle-unemp" checked>
-        <span class="toggle-slider" style="--color:#EF4444"></span>
-        <span class="toggle-label">Unemployment (%)</span>
-      </label>
-    </div>
-    <div class="chart-wrap" style="height:220px"><canvas id="histChart"></canvas></div>
-  </div>
-
-  <!-- About / Methodology -->
-  <div class="card about-card">
-    <div class="card-head"><span class="card-title">About this Project</span></div>
-    <div class="about-grid">
-      <div class="about-section">
-        <div class="about-head">Research Paper</div>
-        <div class="about-text">
-          <b>AI Driven Early Detection of Economic Slowdown in India Using Multi Sector High Frequency Indicators</b><br><br>
-          Presented at NCMPCS-2026, Department of CSE, FOET, Dr. Shakuntala Misra National Rehabilitation University, Lucknow.
-        </div>
-      </div>
-      <div class="about-section">
-        <div class="about-head">ML Model</div>
-        <div class="about-text">
-          Ensemble of Random Forest + Gradient Boosting trained on <b>32 quarterly observations</b> (2018–2025).<br>
-          5-fold CV accuracy: <b>78.6%</b> &nbsp;|&nbsp; LOO accuracy: <b>68.8%</b>
-        </div>
-      </div>
-      <div class="about-section">
-        <div class="about-head">Data Sources</div>
-        <div class="about-text">
-          MOSPI (GDP, CPI, IIP, Agri GVA) · RBI (Credit, Repo Rate, Forex) · CMIE CPHS (Unemployment) · S&amp;P Global (PMI) · Ministry of Commerce (Exports)
-        </div>
-      </div>
-      <div class="about-section">
-        <div class="about-head">Tech Stack</div>
-        <div class="about-text">
-          Python · Flask · scikit-learn · pandas · Chart.js · Render (deployment) · GitHub Open Datasets (live CPI/GDP)
-        </div>
-      </div>
-    </div>
-  </div>
-
-    <!-- ════════════════════════════════════════════
-       LEARN & ASK SECTION
-       Add this block BEFORE the <footer> tag
-       in templates/index.html
-       ════════════════════════════════════════════ -->
-
-  <div class="learn-wrap" id="learn-section">
-
-    <!-- Header -->
-    <div class="learn-header">
-      <div>
-        <div class="learn-title">Learn & Ask</div>
-        <div class="learn-sub">Economic terms explained simply — and ask the AI any question you have</div>
-      </div>
-      <div class="learn-search-wrap">
-        <input class="learn-search" id="learn-search" type="text"
-          placeholder="Search a term… e.g. 'PMI' or 'Repo Rate'">
-      </div>
-    </div>
-
-    <!-- Category Tabs -->
-    <div class="learn-tabs" id="learn-tabs">
-      <button class="learn-tab active" data-cat="all">All</button>
-      <button class="learn-tab" data-cat="macro">Macro</button>
-      <button class="learn-tab" data-cat="market">Market</button>
-      <button class="learn-tab" data-cat="banking">Banking</button>
-      <button class="learn-tab" data-cat="trade">Trade</button>
-      <button class="learn-tab" data-cat="jobs">Jobs</button>
-    </div>
-
-    <!-- Definition Cards Grid -->
-    <div class="def-grid" id="def-grid"></div>
-
-    <!-- Gemini Chatbox -->
-    <div class="ask-box">
-      <div class="ask-header">
-        <span class="ask-title">Ask the AI</span>
-        <span class="ask-sub">Ask anything about India's economy — in plain English</span>
-      </div>
-
-      <!-- Suggested Questions -->
-      <div class="suggest-row" id="suggest-row">
-        <button class="suggest-btn" onclick="askSuggested(this)">Why does my EMI go up when the repo rate rises?</button>
-        <button class="suggest-btn" onclick="askSuggested(this)">What does an "economic slowdown" actually mean for India?</button>
-        <button class="suggest-btn" onclick="askSuggested(this)">What happens if PMI falls below 50?</button>
-        <button class="suggest-btn" onclick="askSuggested(this)">How does inflation affect an average household?</button>
-        <button class="suggest-btn" onclick="askSuggested(this)">What are the main reasons GDP growth slows down?</button>
-        <button class="suggest-btn" onclick="askSuggested(this)">Why does the stock market fall when FIIs pull out money?</button>
-      </div>
-
-      <!-- Chat Messages -->
-      <div class="chat-messages" id="chat-messages">
-        <div class="chat-msg bot-msg">
-          <div class="msg-avatar"><img src="/static/img/bot-avatar.svg" alt="AI assistant" width="32" height="32"></div>
-          <div class="msg-bubble">
-            Hi! I can answer your questions about India's economy in simple, plain language. Pick a suggestion above or type your own question below.
-          </div>
-        </div>
-      </div>
-
-      <!-- Input -->
-      <div class="chat-input-row">
-        <input class="chat-input" id="chat-input" type="text"
-          placeholder="Type your question here…"
-          onkeydown="if(event.key==='Enter') sendQuestion()">
-        <button class="chat-send" onclick="sendQuestion()" id="send-btn">
-          Ask
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="topbar-left">
+        <button class="sb-toggle" onclick="toggleSidebar()" aria-label="Toggle sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
         </button>
+        <span class="topbar-title">India Economic Slowdown Detector</span>
       </div>
-      <div class="chat-disclaimer">Powered by Gemini AI · For educational purposes only · Not official financial advice</div>
+      <div class="topbar-right">
+        <span class="live-dot-wrap"><span class="live-dot"></span>Live</span>
+      </div>
     </div>
 
-  </div>
-  <!-- END LEARN & ASK SECTION -->
+    <div class="content-inner">
 
-  <footer class="footer">
-    Built by <b>Kartikey Mishra & Mridul Singh Jadaun </b> &nbsp;·&nbsp; NCMPCS-2026 &nbsp;·&nbsp; DSMNRU Lucknow &nbsp;·&nbsp;
-    Data: RBI · MOSPI · CMIE · MoC · S&amp;P Global
-  </footer>
+      <!-- ══ SECTION: OVERVIEW ══ -->
+      <section id="section-overview" class="content-section">
 
-</main>
+        <!-- Macro strip -->
+        <div class="macro-strip">
+          <div class="macro-item">
+            <div class="macro-label">GDP Growth</div>
+            <div class="macro-val" id="m-gdp">—</div>
+            <div class="macro-delta down">↓ from 8.2%</div>
+            <div class="src-badge-wrap" id="m-gdp-src"></div>
+          </div>
+          <div class="macro-item">
+            <div class="macro-label">CPI Inflation</div>
+            <div class="macro-val" id="m-cpi">—</div>
+            <div class="macro-delta" id="m-cpi-d">—</div>
+            <div class="src-badge-wrap" id="m-cpi-src"></div>
+          </div>
+          <div class="macro-item">
+            <div class="macro-label">Repo Rate</div>
+            <div class="macro-val" id="m-repo">—</div>
+            <div class="macro-delta neutral">RBI Policy</div>
+            <div class="src-badge-wrap" id="m-repo-src"></div>
+          </div>
+          <div class="macro-item">
+            <div class="macro-label">INR / USD</div>
+            <div class="macro-val" id="m-fx">—</div>
+            <div class="macro-delta down">↑ Weakening</div>
+            <div class="src-badge-wrap" id="m-fx-src"></div>
+          </div>
+          <div class="macro-item">
+            <div class="macro-label">Exports YoY</div>
+            <div class="macro-val" id="m-exp">—</div>
+            <div class="macro-delta down" id="m-exp-d">—</div>
+            <div class="src-badge-wrap" id="m-exp-src"></div>
+          </div>
+          <div class="macro-item">
+            <div class="macro-label">Unemployment</div>
+            <div class="macro-val" id="m-unemp">—</div>
+            <div class="macro-delta" id="m-unemp-d">Urban CMIE</div>
+            <div class="src-badge-wrap" id="m-unemp-src"></div>
+          </div>
+        </div>
 
+        <!-- ML + Sector row -->
+        <div class="grid-2">
+
+          <div class="card" id="section-ml">
+            <div class="card-head">
+              <span class="card-title">ML Model Prediction</span>
+              <span class="card-tag">Random Forest + GBM</span>
+            </div>
+            <div class="pred-wrap">
+              <div class="gauge-box">
+                <canvas id="gaugeChart" width="180" height="110"></canvas>
+                <div class="gauge-num" id="gauge-num">—</div>
+              </div>
+              <div class="pred-info">
+                <div class="pred-pill" id="pred-pill">—</div>
+                <div class="pred-conf">Confidence: <b id="pred-conf">—</b></div>
+                <div class="prob-list" id="prob-list"></div>
+                <div class="model-stats">
+                  <div class="stat-row"><span>CV Accuracy</span><b>78.6%</b></div>
+                  <div class="stat-row"><span>Training data</span><b>32 quarters</b></div>
+                  <div class="stat-row"><span>Algorithm</span><b>Ensemble</b></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card" id="section-sectors">
+            <div class="card-head">
+              <span class="card-title">Sector Health</span>
+              <span class="card-tag">Click to drill down</span>
+            </div>
+            <div class="sector-grid" id="sector-grid"></div>
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- ══ SECTION: INDICATORS ══ -->
+      <section id="section-indicators" class="content-section">
+
+        <!-- New 8 Indicators -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Demand &amp; Supply Indicators</span>
+            <span class="card-tag">MOSPI · RBI · SIAM · NSE · CGA</span>
+          </div>
+
+          <div class="ds-group-label">Demand Side</div>
+          <div class="ds-grid" id="ds-demand-grid">
+            <div class="ds-card green">
+              <div class="ds-name">Private Consumption (PFCE)</div>
+              <div class="ds-val">7.0%</div>
+              <div class="ds-sub">YoY Growth · MOSPI</div>
+            </div>
+            <div class="ds-card green">
+              <div class="ds-name">Two-Wheeler Sales</div>
+              <div class="ds-val">+14.8%</div>
+              <div class="ds-sub">Rural demand proxy · SIAM</div>
+            </div>
+            <div class="ds-card amber">
+              <div class="ds-name">Rural Wage Growth</div>
+              <div class="ds-val">3.8%</div>
+              <div class="ds-sub">Real wages YoY · Labour Bureau</div>
+            </div>
+            <div class="ds-card blue">
+              <div class="ds-name">Govt Capital Expenditure</div>
+              <div class="ds-val">₹12.2L Cr</div>
+              <div class="ds-sub">FY25 Budget · CGA</div>
+            </div>
+          </div>
+
+          <div class="ds-group-label" style="margin-top:20px">Supply Side</div>
+          <div class="ds-grid" id="ds-supply-grid">
+            <div class="ds-card amber">
+              <div class="ds-name">Core Sector Growth</div>
+              <div class="ds-val">0.5%</div>
+              <div class="ds-sub">8-core industries · DPIIT</div>
+            </div>
+            <div class="ds-card blue">
+              <div class="ds-name">Capacity Utilization</div>
+              <div class="ds-val">75.6%</div>
+              <div class="ds-sub">RBI OBICUS survey</div>
+            </div>
+            <div class="ds-card red">
+              <div class="ds-name">WPI Inflation</div>
+              <div class="ds-val">8.3%</div>
+              <div class="ds-sub">Wholesale prices · DPIIT</div>
+            </div>
+            <div class="ds-card amber">
+              <div class="ds-name">Corporate Earnings (PAT)</div>
+              <div class="ds-val">4.5%</div>
+              <div class="ds-sub">Nifty 50 YoY · NSE</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Additional Indicators -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">Additional Indicators</span>
+            <span class="card-tag">GST · NPCI · Grid-India · Railways · NSE</span>
+          </div>
+          <div class="extra-grid" id="extra-grid"></div>
+        </div>
+
+        <!-- HF Indicators -->
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">High-Frequency Indicators</span>
+            <span class="card-tag">RBI · MOSPI · CMIE · MoC</span>
+          </div>
+          <div class="hf-grid" id="hf-grid"></div>
+        </div>
+
+      </section>
+
+      <!-- ══ SECTION: TRENDS ══ -->
+      <section id="section-trends" class="content-section">
+
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">12-Month Trend</span>
+            <div class="tab-row" id="sector-tabs"></div>
+          </div>
+          <div class="chart-legend">
+            <span><i class="dot" style="background:#3B82F6"></i>Value</span>
+            <span><i class="dot" style="background:#22C55E"></i>Avg</span>
+            <span><i class="red-dash"></i>Alert threshold</span>
+          </div>
+          <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+        </div>
+
+        <div class="grid-2">
+
+          <div class="card">
+            <div class="card-head">
+              <span class="card-title">Feature Importance</span>
+              <span class="card-tag">Random Forest</span>
+            </div>
+            <div class="chart-wrap" style="height:210px"><canvas id="featChart"></canvas></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <span class="card-title">Historical Slowdown Comparison</span>
+              <span class="card-tag">2019 · COVID · Current</span>
+            </div>
+            <div class="hist-toggles" id="hist-toggles">
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggle-gdp" checked>
+                <span class="toggle-slider" style="--color:#3B82F6"></span>
+                <span class="toggle-label">GDP Growth (%)</span>
+              </label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggle-exports" checked>
+                <span class="toggle-slider" style="--color:#F59E0B"></span>
+                <span class="toggle-label">Export Growth (%)</span>
+              </label>
+              <label class="toggle-switch">
+                <input type="checkbox" id="toggle-unemp" checked>
+                <span class="toggle-slider" style="--color:#EF4444"></span>
+                <span class="toggle-label">Unemployment (%)</span>
+              </label>
+            </div>
+            <div class="chart-wrap" style="height:160px"><canvas id="histChart"></canvas></div>
+          </div>
+
+        </div>
+
+      </section>
+
+      <!-- ══ SECTION: AI ══ -->
+      <section id="section-ai" class="content-section">
+        <div class="card">
+          <div class="card-head">
+            <span class="card-title">AI Analysis</span>
+            <button class="run-btn" id="ai-btn" onclick="runAI()">▶ Run Analysis</button>
+          </div>
+          <div class="ai-box" id="ai-box">
+            <div class="ai-placeholder">Click "Run Analysis" to get AI-powered economic insights based on current live indicators.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ SECTION: LEARN & ASK ══ -->
+      <section id="section-learn" class="content-section">
+        <div class="learn-wrap">
+          <div class="learn-header">
+            <div>
+              <div class="learn-title">Learn &amp; Ask</div>
+              <div class="learn-sub">Economic terms explained simply — ask the AI anything</div>
+            </div>
+            <div class="learn-search-wrap">
+              <input class="learn-search" id="learn-search" type="text" placeholder="Search a term… e.g. 'PMI' or 'Repo Rate'">
+            </div>
+          </div>
+          <div class="learn-tabs" id="learn-tabs">
+            <button class="learn-tab active" data-cat="all">All</button>
+            <button class="learn-tab" data-cat="macro">Macro</button>
+            <button class="learn-tab" data-cat="market">Market</button>
+            <button class="learn-tab" data-cat="banking">Banking</button>
+            <button class="learn-tab" data-cat="trade">Trade</button>
+            <button class="learn-tab" data-cat="jobs">Jobs</button>
+          </div>
+          <div class="def-grid" id="def-grid"></div>
+          <div class="ask-box">
+            <div class="ask-header">
+              <div class="ask-title">Ask the AI</div>
+              <div class="ask-sub">Ask anything about India's economy — in plain English</div>
+            </div>
+            <div class="suggest-row" id="suggest-row">
+              <button class="suggest-btn" onclick="askSuggested(this)">Why does my EMI go up when the repo rate rises?</button>
+              <button class="suggest-btn" onclick="askSuggested(this)">What does an "economic slowdown" actually mean for India?</button>
+              <button class="suggest-btn" onclick="askSuggested(this)">What happens if PMI falls below 50?</button>
+              <button class="suggest-btn" onclick="askSuggested(this)">How does inflation affect an average household?</button>
+              <button class="suggest-btn" onclick="askSuggested(this)">What are the main reasons GDP growth slows down?</button>
+              <button class="suggest-btn" onclick="askSuggested(this)">Why does the stock market fall when FIIs pull out money?</button>
+              <button class="suggest-btn" onclick="askSuggested(this)">What does Core Sector Growth of 0.5% mean for the economy?</button>
+              <button class="suggest-btn" onclick="askSuggested(this)">Why does rural wage growth matter as an economic indicator?</button>
+            </div>
+            <div class="chat-messages" id="chat-messages">
+              <div class="chat-msg bot-msg">
+                <div class="msg-avatar"><img src="/static/img/bot-avatar.svg" alt="AI" width="32" height="32"></div>
+                <div class="msg-bubble">Hi! I can answer your questions about India's economy in simple, plain language. Pick a suggestion above or type your own question below.</div>
+              </div>
+            </div>
+            <div class="chat-input-row">
+              <input class="chat-input" id="chat-input" type="text" placeholder="Type your question here…" onkeydown="if(event.key==='Enter') sendQuestion()">
+              <button class="chat-send" onclick="sendQuestion()" id="send-btn">Ask</button>
+            </div>
+            <div class="chat-disclaimer">Powered by Gemini AI · For educational purposes only · Not official financial advice</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══ SECTION: ABOUT ══ -->
+      <section id="section-about" class="content-section">
+        <div class="card about-card">
+          <div class="card-head"><span class="card-title">About this Project</span></div>
+          <div class="about-grid">
+            <div class="about-section">
+              <div class="about-head">Research Paper</div>
+              <div class="about-text">
+                <b>AI Driven Early Detection of Economic Slowdown in India Using Multi Sector High Frequency Indicators</b><br><br>
+                Presented at NCMPCS-2026, Department of CSE, FOET, Dr. Shakuntala Misra National Rehabilitation University, Lucknow.
+              </div>
+            </div>
+            <div class="about-section">
+              <div class="about-head">ML Model</div>
+              <div class="about-text">
+                Ensemble of Random Forest + Gradient Boosting trained on <b>32 quarterly observations</b> (2018–2025).<br>
+                5-fold CV accuracy: <b>78.6%</b> &nbsp;|&nbsp; LOO accuracy: <b>68.8%</b>
+              </div>
+            </div>
+            <div class="about-section">
+              <div class="about-head">Data Sources</div>
+              <div class="about-text">
+                MOSPI (GDP, CPI, IIP, Agri GVA) · RBI (Credit, Repo Rate, Forex) · CMIE CPHS (Unemployment) · S&amp;P Global (PMI) · Ministry of Commerce (Exports)
+              </div>
+            </div>
+            <div class="about-section">
+              <div class="about-head">Tech Stack</div>
+              <div class="about-text">
+                Python · Flask · scikit-learn · pandas · Chart.js · Vercel · GitHub Open Datasets (live CPI/GDP)
+              </div>
+            </div>
+          </div>
+        </div>
+        <footer class="footer">
+          Built by <b>Kartikey Mishra &amp; Mridul Singh Jadaun</b> &nbsp;·&nbsp; NCMPCS-2026 &nbsp;·&nbsp; DSMNRU Lucknow &nbsp;·&nbsp;
+          Data: RBI · MOSPI · CMIE · MoC · S&amp;P Global
+        </footer>
+      </section>
+
+    </div><!-- /content-inner -->
+  </main>
+</div><!-- /app-shell -->
+
+<script>
+// ── Sidebar nav ──
+function sbNavigate(el) {
+  document.querySelectorAll('.sb-link').forEach(l => l.classList.remove('active'));
+  el.classList.add('active');
+}
+function toggleSidebar() {
+  document.querySelector('.app-shell').classList.toggle('sb-collapsed');
+}
+// Scroll-spy: highlight nav link based on visible section
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) {
+      const id = e.target.id;
+      document.querySelectorAll('.sb-link').forEach(l => {
+        l.classList.toggle('active', l.getAttribute('href') === '#' + id);
+      });
+    }
+  });
+}, { threshold: 0.35 });
+document.querySelectorAll('.content-section').forEach(s => observer.observe(s));
+</script>
 <script src="/static/script.js"></script>
 </body>
 </html>
