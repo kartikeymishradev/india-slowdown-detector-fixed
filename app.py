@@ -302,15 +302,21 @@ def health():
 
 
 def _startup_refresh():
-    """On first server start, do one background Gemini refresh so the
-    'Not yet fetched' badge never appears for the very first visitor."""
+    """Only refresh on startup if cache is completely empty (first ever run).
+    If disk cache was loaded on import, skip — no point burning API quota on restart."""
     import time, threading
     def _run():
         time.sleep(3)   # let Flask finish binding before firing Gemini calls
         try:
-            print("🔄 Startup: triggering initial AI-grounded data refresh…")
-            refresh_all_grounding()
-            print("✅ Startup refresh complete.")
+            status = get_grounding_status()
+            grounding_empty = status.get("grounding_age_seconds") is None
+            extended_empty  = status.get("extended_age_seconds")  is None
+            if grounding_empty and extended_empty:
+                print("🔄 Startup: cache empty, triggering initial AI-grounded data refresh…")
+                refresh_all_grounding()
+                print("✅ Startup refresh complete.")
+            else:
+                print("✅ Startup: cache already populated, skipping refresh.")
         except Exception as e:
             print(f"⚠️  Startup refresh failed (non-fatal): {e}")
     threading.Thread(target=_run, daemon=True).start()

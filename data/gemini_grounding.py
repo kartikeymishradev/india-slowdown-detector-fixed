@@ -65,7 +65,6 @@ import os
 import json
 import time
 import re
-import tempfile
 import traceback
 
 CACHE_TTL_SECONDS = 6 * 60 * 60        # 6 hours — normal "data still fresh" window
@@ -91,7 +90,7 @@ _cache = {"data": None, "ts": 0, "last_attempt": 0}
 # existing config.json fallback kicks in as the final safety net.
 
 _CACHE_FILE = os.path.join(
-    os.environ.get("GROUNDING_CACHE_DIR", tempfile.gettempdir()), "grounding_cache.json"
+    os.environ.get("GROUNDING_CACHE_DIR", os.path.join(os.path.dirname(__file__), "..", "tmp")), "grounding_cache.json"
 )
 
 
@@ -114,9 +113,10 @@ def _load_disk_cache():
 
 def _save_disk_cache():
     """Persist the current in-memory cache state to disk. Best-effort --
-    if /tmp isn't writable for some reason, we just keep running on the
-    in-memory cache for the rest of this process's lifetime."""
+    if the directory isn't writable for some reason, we just keep running on
+    the in-memory cache for the rest of this process's lifetime."""
     try:
+        os.makedirs(os.path.dirname(_CACHE_FILE), exist_ok=True)
         with open(_CACHE_FILE, "w") as f:
             json.dump({"grounding": _cache, "extended": _extended_cache}, f)
     except Exception as e:
@@ -293,6 +293,7 @@ def fetch_grounded_indicators(force=False):
                 contents=FIELDS_PROMPT,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(google_search=types.GoogleSearch())],
+                    temperature=0.0,
                 ),
             )
 
@@ -415,6 +416,7 @@ def fetch_extended_indicators(force=False):
                 contents=EXTENDED_FIELDS_PROMPT,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(google_search=types.GoogleSearch())],
+                    temperature=0.0,
                 ),
             )
 
@@ -507,6 +509,7 @@ def generate_analysis(indicators, prediction, risk_score):
 
     try:
         from google import genai
+        from google.genai import types
 
         prompt = f"""You are an expert Indian economic analyst. Analyze these current indicators and give a concise 3-4 paragraph insight in clear, simple English.
 
@@ -536,6 +539,7 @@ Be specific to India's current economic context. Do not use markdown headers, ju
             return client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
+                config=types.GenerateContentConfig(temperature=0.0),
             )
 
         response = _call_with_fallback(key_pool, _request)

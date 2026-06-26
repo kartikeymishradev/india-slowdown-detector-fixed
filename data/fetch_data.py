@@ -93,7 +93,7 @@ def fetch_exports_yoy(retries=2):
     wild percentage swing on the dashboard."""
     url = (
         "https://api.data.gov.in/resource/e8b0e12d-f3a3-4cb0-84c9-4e4c7cf89dd0"
-        "?api-key=579b464db66ec23bdd000001cdd3946e44ce4aab0ddd8f4b3c4b9e73"
+        f"?api-key={os.environ.get('DATA_GOV_IN_API_KEY', '579b464db66ec23bdd000001cdd3946e44ce4aab0ddd8f4b3c4b9e73')}"
         "&format=json&limit=2"
     )
     for attempt in range(retries + 1):
@@ -120,38 +120,39 @@ def fetch_exports_yoy(retries=2):
 
 def get_all_indicators():
     cfg = load_config()
-    macro  = cfg.get("macro", {})
-    pmi    = cfg.get("pmi", {})
-    trends = cfg.get("sector_trends", {})
-    hf     = cfg.get("hf_indicators", {})
+    macro    = cfg.get("macro", {})
+    pmi      = cfg.get("pmi", {})
+    trends   = cfg.get("sector_trends", {})
+    hf       = cfg.get("hf_indicators", {})
+    fallback = cfg.get("fallback_defaults", {})
 
     sources_live = []
 
     # ── Live: INR/USD ──────────────────────────────────────────────────────────
     inr_usd = fetch_inr_usd()
     if inr_usd is None:
-        inr_usd = 94.5   # last known fallback
+        inr_usd = fallback.get("inr_usd", 94.5)  # last known fallback, see config.json
     else:
         sources_live.append("INR/USD:frankfurter.app")
 
     # ── Live: CPI ─────────────────────────────────────────────────────────────
     cpi_val, cpi_yr = fetch_cpi_india()
     if cpi_val is None:
-        cpi_val = 3.93   # MoSPI May 2026
+        cpi_val = fallback.get("cpi_inflation_pct", 3.93)  # see config.json fallback_defaults
     else:
         sources_live.append(f"CPI:{cpi_yr}:WorldBank")
 
     # ── Live: GDP growth ──────────────────────────────────────────────────────
     gdp_val, gdp_yr = fetch_gdp_growth_india()
     if gdp_val is None:
-        gdp_val = 7.6    # MOSPI 2nd Advance Est. FY2025-26
+        gdp_val = fallback.get("gdp_growth_pct", 7.7)  # see config.json fallback_defaults
     else:
         sources_live.append(f"GDP:{gdp_yr}:WorldBank")
 
     # ── Live: Exports YoY ─────────────────────────────────────────────────────
     exp_val = fetch_exports_yoy()
     if exp_val is None:
-        exp_val = 16.09  # MoC Apr-May FY2026-27
+        exp_val = fallback.get("export_growth_pct", 16.09)  # see config.json fallback_defaults
     else:
         sources_live.append("Exports:data.gov.in")
 
@@ -420,6 +421,9 @@ def get_all_indicators():
             "trade_deficit_wide":   trade_deficit_wide,
         },
 
+        # ── Demand & Supply Indicators (config-driven, quarterly update) ──────
+        "demand_supply":  cfg.get("demand_supply", {}),
+
         "source":         source_str,
         "field_sources":  field_sources,
         "ai_grounding_note": grounded.get("source_note") if grounded else None,
@@ -430,23 +434,39 @@ def get_all_indicators():
 
 
 def build_feature_vector(data):
-    """Build named feature DataFrame for ML model."""
-    gdp = data.get("gdp_growth", 7.6)
-    pmi = data.get("pmi", 55.0)
-    exp = data.get("export_growth", 16.09)
-    crd = data.get("credit_growth", 7.8)
+    """Build named feature DataFrame for ML model v2.
+    18 features matching training_data_v2.csv columns."""
+    gdp  = data.get("gdp_growth", 7.7)
+    pmi  = data.get("pmi", 55.0)
+    exp  = data.get("export_growth", 16.09)
+    ds   = data.get("demand_supply", {})
+    dem  = ds.get("demand", {})
+    sup  = ds.get("supply", {})
+
+    core_sector  = sup.get("core_sector_growth",  {}).get("value", 3.0)
+    cap_util     = sup.get("capacity_util",        {}).get("value", 74.0)
+    corp_earn    = sup.get("corporate_earnings",   {}).get("value", 8.0)
+    wpi          = sup.get("wpi_inflation",        {}).get("value", 3.0)
+    pfce         = dem.get("pfce_growth",          {}).get("value", 7.0)
 
     return pd.DataFrame([{
-        "gdp_growth":    gdp,
-        "cpi":           data.get("cpi", 3.93),
-        "unemployment":  data.get("unemployment", 6.6),
-        "export_growth": exp,
-        "credit_growth": crd,
-        "pmi":           pmi,
-        "agri_gva":      data.get("agri_gva", 3.8),
-        "repo_rate":     data.get("repo_rate", 5.25),
-        "pmi_below50":   int(pmi < 50),
-        "export_neg":    int(exp < 0),
-        "credit_soft":   int(crd < 8),
-        "gdp_momentum":  0.0,
+        "gdp_growth":               gdp,
+        "cpi_inflation":            data.get("cpi", 3.93),
+        "unemployment":             data.get("unemployment", 5.5),
+        "exports_yoy":              exp,
+        "repo_rate":                data.get("repo_rate", 5.25),
+        "pmi_manufacturing":        pmi,
+        "wpi_inflation":            wpi,
+        "core_sector_growth":       core_sector,
+        "capacity_utilization":     cap_util,
+        "corporate_earnings_growth": corp_earn,
+        "pfce_growth":              pfce,
+        "inr_usd":                  data.get("inr_usd", 84.0),
+        # Derived features
+        "pmi_below50":              int(pmi < 50),
+        "export_neg":               int(exp < 0),
+        "core_sector_weak":         int(core_sector < 2),
+        "cap_util_low":             int(cap_util < 72),
+        "gdp_momentum":             0.0,
+        "earnings_weak":            int(corp_earn < 5),
     }])

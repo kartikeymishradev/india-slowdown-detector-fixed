@@ -45,11 +45,12 @@ const FEAT_IMP = {
 };
 
 // Historical GDP comparison data (MOSPI real)
-const HIST_LABELS = ['2018','2019','2020','2021','2022','2023','2024','2025*'];
+// Historical data — annual FY averages from training_data_v2.csv (52 quarters)
+const HIST_LABELS = ['FY18','FY19','FY20','FY21','FY22','FY23','FY24','FY25'];
 const HIST_DATA = {
-  gdp:     [7.2, 4.0, -5.8, 9.1, 7.2, 8.2, 6.7, 6.4],
-  exports: [9.8, -4.7, -7.3, 29.4, 12.3, -5.0, -2.5, -3.0],
-  unemp:   [6.1, 7.6, 9.0, 8.1, 7.3, 7.7, 7.9, 8.0],
+  gdp:     [6.8, 6.5, 3.9, -6.0, 10.6, 7.8, 9.2, 6.5],
+  exports: [12.4, 9.7, -9.7, 0.9, 36.0, 3.1, 6.4, 14.7],
+  unemp:   [8.2, 8.0, 9.4, 13.2, 8.0, 7.8, 7.7, 8.1],
 };
 
 async function apiFetch(url) {
@@ -58,10 +59,10 @@ async function apiFetch(url) {
 }
 
 function setHeroBanner(risk, label) {
-  const banner = document.getElementById('status-banner');
-  const status = document.getElementById('hero-status');
-  const sub    = document.getElementById('hero-sub');
-  document.getElementById('hero-score').textContent = risk;
+  const banner = null;
+  const status = document.getElementById('sb-status-label');
+  const sub = null;
+  const scoreEl = document.getElementById('sb-score-num'); if(scoreEl) scoreEl.textContent = risk; const fillEl = document.getElementById('sb-score-fill'); if(fillEl) fillEl.style.width = risk + '%';
 
   const cfg = {
     'Stable':   ['green', '✅ Economy Stable', 'No immediate slowdown signals detected across major sectors'],
@@ -69,9 +70,9 @@ function setHeroBanner(risk, label) {
     'Slowdown': ['red',   '🚨 Slowdown Detected', 'Multiple sector alerts triggered — high economic risk'],
   };
   const [cls, st, sb] = cfg[label] || ['', 'Analyzing…', 'Fetching live indicators'];
-  banner.className = `hero-banner ${cls}`;
-  status.textContent = st;
-  sub.textContent = sb;
+  const sbStatus = document.getElementById('sb-status'); if(sbStatus) sbStatus.className = 'sb-status ' + cls;
+  if(status) status.textContent = st;
+  // sub removed
 }
 
 function setMacro(data) {
@@ -97,9 +98,20 @@ function setMacro(data) {
   }) + ' IST';
 
   const SOURCE_BADGE = {
-    live:         '<span class="src-badge src-live" title="Fetched live from external API">🟢 Live</span>',
+    live:         '<span class="src-badge src-live" title="Fetched live from forex API — updates every page load">🟢 Live</span>',
     ai_grounded:  ageBadge(data.grounding_status?.grounding_age_seconds, 'src-ai', '🔵'),
-    manual:       ageBadge(data.grounding_status?.grounding_age_seconds, 'src-manual', '🟡'),
+    quarterly:    '<span class="src-badge src-quarterly" title="Released quarterly by MOSPI — updated every ~3 months">🗓️ Quarterly</span>',
+    biannual:     '<span class="src-badge src-quarterly" title="RBI MPC meets 6 times/year — updated on policy dates">🏦 RBI Policy</span>',
+  };
+
+  // Each indicator gets the badge that honestly reflects its update frequency
+  const BADGE_MAP = {
+    'gdp_growth':    SOURCE_BADGE.quarterly,    // MOSPI quarterly release
+    'cpi':           SOURCE_BADGE.ai_grounded,  // MOSPI monthly → Gemini fetches
+    'repo_rate':     SOURCE_BADGE.biannual,     // RBI MPC 6x/year
+    'inr_usd':       SOURCE_BADGE.live,         // forex API real-time
+    'export_growth': SOURCE_BADGE.ai_grounded,  // MoC monthly → Gemini fetches
+    'unemployment':  SOURCE_BADGE.ai_grounded,  // CMIE monthly → Gemini fetches
   };
   const BADGE_TARGETS = {
     gdp_growth:'m-gdp-src', cpi:'m-cpi-src', repo_rate:'m-repo-src',
@@ -107,7 +119,7 @@ function setMacro(data) {
   };
   Object.entries(BADGE_TARGETS).forEach(([field, elId]) => {
     const el = document.getElementById(elId);
-    if (el) el.innerHTML = SOURCE_BADGE[fs[field] || 'manual'];
+    if (el) el.innerHTML = BADGE_MAP[field] || SOURCE_BADGE.ai_grounded;
   });
 }
 
@@ -119,11 +131,14 @@ function ageBadge(ageSeconds, cls, dot) {
   let label;
   if (ageSeconds == null) {
     label = 'Not yet fetched';
-  } else if (ageSeconds < 60) {
-    label = 'Refreshed just now';
+  } else if (ageSeconds < 3600) {
+    label = 'Updated today';
+  } else if (ageSeconds < 86400) {
+    const hrs = Math.floor(ageSeconds / 3600);
+    label = `Updated ${hrs}h ago`;
   } else {
-    const mins = Math.round(ageSeconds / 60);
-    label = `Refreshed ${mins} min ago`;
+    const days = Math.floor(ageSeconds / 86400);
+    label = `Updated ${days}d ago`;
   }
   return `<span class="src-badge ${cls}" title="Time since this indicator's AI-grounded data was last refreshed">${dot} ${label}</span>`;
 }
@@ -204,6 +219,28 @@ function buildTrend(s) {
       },
       plugins: { legend:{display:false}, tooltip:{mode:'index',intersect:false} }
     }
+  });
+}
+
+function buildDS(ds) {
+  if (!ds || (!ds.demand && !ds.supply)) return;
+  const colorMap = { green:'#22C55E', amber:'#F59E0B', red:'#EF4444', blue:'#3B82F6' };
+
+  ['demand','supply'].forEach(side => {
+    const grid = document.getElementById(`ds-${side}-grid`);
+    if (!grid || !ds[side]) return;
+    grid.innerHTML = '';
+    Object.values(ds[side]).forEach(ind => {
+      const color = colorMap[ind.signal] || '#6B7280';
+      const unit = ind.unit === '%' ? '%' : (ind.unit === 'L Cr' ? ' L Cr' : '');
+      const valStr = ind.unit === 'L Cr' ? `₹${ind.value}${unit}` : `${ind.value > 0 && ind.unit === '%' ? '+' : ''}${ind.value}${unit}`;
+      grid.innerHTML += `
+        <div class="ds-card" style="border-left:3px solid ${color}">
+          <div class="ds-name">${ind.label}</div>
+          <div class="ds-val" style="color:${color}">${valStr}</div>
+          <div class="ds-sub">${ind.sub}</div>
+        </div>`;
+    });
   });
 }
 
@@ -352,6 +389,7 @@ async function refreshAll() {
   buildSectors(sectors);
   buildTrend(sectors[selectedSec]);
   buildHF(sectors);
+  buildDS(data.indicators.demand_supply);
   buildExtra(data.indicators.extended_indicators, data.indicators.derived_features);
   buildFeat();
   buildHist();
@@ -377,50 +415,38 @@ refreshAll();
 // After either path runs, we re-call refreshAll() so the dashboard re-renders
 // with whatever (possibly updated) data is now cached on the server.
 
-const AI_AUTO_REFRESH_MS = 5.5 * 60 * 1000; // ~5.5 minutes
+// ── Midnight auto-refresh ────────────────────────────────────────────────────
+// Every day at midnight IST, silently fetch fresh Gemini-grounded data.
+// Works on Vercel too (runs in the browser, not the server).
 let aiRefreshInFlight = false;
 
-async function refreshAIData(isAuto) {
-  if (aiRefreshInFlight) return; // don't stack overlapping refresh calls
+async function refreshAIData() {
+  if (aiRefreshInFlight) return;
   aiRefreshInFlight = true;
-
-  const btn = document.getElementById('ai-refresh-btn');
-  if (btn && !isAuto) {
-    btn.disabled = true;
-    btn.textContent = '⏳ Refreshing…';
-  }
-
   try {
-    await fetch('/api/refresh-grounding', { method: 'POST' });
-  } catch {
-    // Network hiccup -- silently ignore, especially for the automatic/background
-    // call. The next page interaction or timer tick will just try again.
-  }
-
-  // Pull the (possibly now-updated) cached data back into the dashboard.
+    const res = await fetch('/api/refresh-grounding', { method: 'POST' });
+    if (res.ok) await new Promise(r => setTimeout(r, 500));
+  } catch { /* network hiccup — silently ignore */ }
   await refreshAll();
-
-  if (btn && !isAuto) {
-    btn.disabled = false;
-    btn.textContent = '↻ Refresh AI Data';
-  }
   aiRefreshInFlight = false;
 }
 
-function initAIRefreshButton() {
-  const btn = document.getElementById('ai-refresh-btn');
-  if (btn && !btn.dataset.bound) {
-    btn.dataset.bound = 'true';
-    btn.addEventListener('click', () => refreshAIData(false));
-  }
+function scheduleMidnightRefresh() {
+  const now = new Date();
+  const midnight = new Date();
+  midnight.setHours(24, 0, 30, 0); // 12:00:30 AM IST next day
+  const msUntilMidnight = midnight - now;
+  setTimeout(() => {
+    refreshAIData();
+    // Then repeat every 24 hours
+    setInterval(refreshAIData, 24 * 60 * 60 * 1000);
+  }, msUntilMidnight);
+  const h = Math.floor(msUntilMidnight / 3600000);
+  const m = Math.floor((msUntilMidnight % 3600000) / 60000);
+  console.log(`Next AI data refresh scheduled in ${h}h ${m}m (at midnight)`);
 }
-initAIRefreshButton();
+scheduleMidnightRefresh();
 
-// Background auto-refresh: silently re-fetch AI-grounded data every ~5-6 min,
-// independent of whether the user reloads the page. A plain page reload in
-// between these ticks will NOT trigger an extra Gemini call -- it just shows
-// whatever is currently cached.
-setInterval(() => refreshAIData(true), AI_AUTO_REFRESH_MS);
 
 // ═══════════════════════════════════════════
 //  LEARN & ASK SECTION
@@ -636,6 +662,30 @@ function initLearnSearch() {
 
 const CHAT_HISTORY = [];
 
+// ── Cached answers for suggested questions (zero API calls) ──────────────────
+const CACHED_ANSWERS = {
+  "Why does my EMI go up when the repo rate rises?":
+    "When RBI raises the repo rate, banks have to pay more to borrow money from RBI. Banks then pass this cost to you by raising their lending rates (MCLR/EBLR). Your home loan, car loan, or personal loan EMI is linked to these rates — so when repo rate goes up by 0.25%, your EMI on a ₹30L, 20-year loan can go up by ₹400–600/month. The reverse is also true — when RBI cuts repo rate (like it has been doing in 2025–26), EMIs come down.",
+
+  "What does an \"economic slowdown\" actually mean for India?":
+    "An economic slowdown means the economy is still growing, but at a slower pace than before. For India: GDP growth dropping from 8% to 5-6% is considered a slowdown. In practical terms — fewer new jobs, companies cutting expansion plans, banks lending less, exports declining, consumers spending cautiously. It doesn't mean the economy is shrinking (that's a recession) — it's just losing momentum. This dashboard tracks GDP growth, PMI, unemployment, credit growth and exports to detect early slowdown signals.",
+
+  "What happens if PMI falls below 50?":
+    "PMI (Purchasing Managers' Index) below 50 means contraction — factory managers are seeing fewer new orders, cutting production, and sometimes letting workers go. For India: Manufacturing PMI below 50 is a serious early warning — it usually shows up 1-2 months before GDP data confirms a slowdown. During COVID, India's PMI crashed to 27. A reading of 47-49 means mild slowdown; below 45 is alarming. Services PMI matters too — India's services sector (IT, banking, hospitality) is over 50% of GDP, so if both fall below 50 together, the signal is very strong.",
+
+  "How does inflation affect an average household?":
+    "Inflation means your money buys less than before. At 6% CPI inflation: ₹100 of groceries last year costs ₹106 today. But salaries rarely rise 6% for everyone — so real purchasing power falls. For India: food inflation hits hardest (pulses, vegetables, cooking oil). High inflation also forces RBI to keep interest rates high, making loans expensive. The poorest households spend 50-60% of income on food, so even a 1-2% food inflation spike is very painful. RBI's target is 4% — above 6% is the upper tolerance limit.",
+
+  "What are the main reasons GDP growth slows down?":
+    "India's GDP slowdown usually comes from a combination of: (1) Weak exports — global demand falls, IT and merchandise exports drop; (2) Low private investment — companies don't expand when uncertain; (3) High interest rates — RBI keeping rates high to fight inflation reduces borrowing; (4) Poor monsoon — bad harvest hurts rural income and demand; (5) Global factors — US recession or China slowdown affects India. The dashboard tracks all these signals — export growth, credit growth, PMI and unemployment together show which factor is driving any slowdown.",
+
+  "Why does the stock market fall when FIIs pull out money?":
+    "FIIs (Foreign Institutional Investors) — big global funds like Blackrock, Vanguard — hold a significant chunk of Indian stocks. When they sell and pull money out: (1) Direct impact — selling pressure pushes stock prices down; (2) Rupee weakens — they convert rupees to dollars when leaving; (3) Sentiment effect — other investors panic-sell seeing FII outflows; (4) Liquidity tightens — less money in the market. FII outflow of ₹10,000+ Cr in a month is a warning sign. However, strong domestic investors (DIIs — mutual funds, LIC) now often absorb FII selling, making Indian markets more resilient than before."
+};
+
+// ── Chatbot cooldown: 15 seconds between messages ───────────────────────────
+let _chatCooldownUntil = 0;
+
 function appendMsg(text, role) {
   const box = document.getElementById('chat-messages');
   const div = document.createElement('div');
@@ -673,15 +723,38 @@ async function sendQuestion() {
   const input = document.getElementById('chat-input');
   const btn   = document.getElementById('send-btn');
   const q = input.value.trim(); if (!q) return;
+
+  // 15-second cooldown between messages
+  const now = Date.now();
+  if (now < _chatCooldownUntil) {
+    const secsLeft = Math.ceil((_chatCooldownUntil - now) / 1000);
+    btn.textContent = `Wait ${secsLeft}s`;
+    setTimeout(() => { btn.textContent = 'Send'; }, (_chatCooldownUntil - now));
+    return;
+  }
+  _chatCooldownUntil = now + 15000;
+
   input.value = ''; btn.disabled = true;
   appendMsg(q, 'user');
   CHAT_HISTORY.push({role:'user', text:q});
   showTyping();
-  const answer = await sendToGemini(q);
+
+  // Check cache first — exact match on suggested questions
+  const cached = CACHED_ANSWERS[q];
+  let answer;
+  if (cached) {
+    await new Promise(r => setTimeout(r, 600)); // brief pause so typing indicator shows
+    answer = cached;
+  } else {
+    answer = await sendToGemini(q);
+  }
+
   removeTyping();
   appendMsg(answer, 'bot');
   CHAT_HISTORY.push({role:'bot', text:answer});
-  btn.disabled = false;
+
+  // Re-enable after cooldown expires
+  setTimeout(() => { btn.disabled = false; btn.textContent = 'Send'; }, 15000);
   input.focus();
 }
 

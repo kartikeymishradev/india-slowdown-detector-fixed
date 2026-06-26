@@ -10,7 +10,7 @@
 [![Chart.js](https://img.shields.io/badge/Chart.js-4.4-pink?style=flat-square)](https://chartjs.org)
 [![Vercel](https://img.shields.io/badge/Deployed-Vercel-black?style=flat-square\&logo=vercel)](https://vercel.com)
 
-**[🔗 Live Demo](https://india-slowdown-detector.vercel.app/)**  ·  **[📄 Research Paper](#)**  ·  **[📊 Training Data](model/training_data.csv)**
+**[🔗 Live Demo](https://india-slowdown-detector.vercel.app/)**  ·  **[📄 Research Paper](#)**  ·  **[📊 Training Data](model/training_data_v2.csv)**
 
 </div>
 
@@ -33,12 +33,12 @@ Combines **Machine Learning** and **high-frequency economic indicators** from 5 
 ## 🤖 ML Model
 
 * **Algorithm:** Ensemble (Random Forest + Gradient Boosting, Soft Voting)
-* **Training Data:** 32 quarterly observations (2018 Q1 – 2025 Q4)
-* **Features:** 12 macroeconomic and high-frequency indicators
+* **Training Data:** 52 quarterly observations (FY2013 Q1 – FY2025 Q4)
+* **Features:** 18 macroeconomic and high-frequency indicators (12 raw + 6 derived)
 * **Output:** Stable / Warning / Slowdown + Confidence Score
-* **5-Fold Cross Validation Accuracy:** 78.6%
-* **Leave-One-Out Accuracy:** 68.8%
-* **Data Sources:** MOSPI, RBI, CMIE, Ministry of Commerce, S&P Global
+* **5-Fold Cross Validation Accuracy:** ~80%
+* **Leave-One-Out Accuracy:** ~78%
+* **Data Sources:** MOSPI, RBI, CMIE, Ministry of Commerce, S&P Global, DPIIT, NSE
 
 ---
 
@@ -46,7 +46,7 @@ Combines **Machine Learning** and **high-frequency economic indicators** from 5 
 
 ```bash
 # Clone repository
-git clone https://github.com/YOUR_USERNAME/india-slowdown-detector.git
+git clone https://github.com/kartikeymishradev/india-slowdown-detector-fixed.git
 
 # Enter project folder
 cd india-slowdown-detector
