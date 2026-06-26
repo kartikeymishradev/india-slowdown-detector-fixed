@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>India Economic Slowdown Detector</title>
+<link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+<link rel="apple-touch-icon" href="/static/img/logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
@@ -15,7 +17,7 @@
 <!-- ── LOADER ── -->
 <div id="loader">
   <div class="loader-inner">
-    <div class="loader-logo">IE</div>
+    <img src="/static/img/logo.svg" class="loader-logo" alt="IE" style="width:56px;height:56px;">
     <div class="loader-ring"><div class="loader-arc"></div></div>
     <p id="loading-text">Initializing…</p>
     <p id="loading-note">Fetching live economic data · This may take up to 30 seconds</p>
@@ -32,7 +34,7 @@
 
     <!-- Brand -->
     <div class="sb-brand">
-      <div class="sb-logo">IE</div>
+      <img src="/static/img/logo.svg" class="sb-logo" alt="IE" style="width:36px;height:36px;border-radius:8px;">
       <div class="sb-brand-text">
         <div class="sb-brand-title">India Detector</div>
         <div class="sb-brand-sub">AI-Powered · Live</div>
@@ -171,8 +173,8 @@
                 <div class="pred-conf">Confidence: <b id="pred-conf">—</b></div>
                 <div class="prob-list" id="prob-list"></div>
                 <div class="model-stats">
-                  <div class="stat-row"><span>CV Accuracy</span><b>~80%</b></div>
-                  <div class="stat-row"><span>Training data</span><b>52 quarters</b></div>
+                  <div class="stat-row"><span>CV Accuracy</span><b>78.6%</b></div>
+                  <div class="stat-row"><span>Training data</span><b>32 quarters</b></div>
                   <div class="stat-row"><span>Algorithm</span><b>Ensemble</b></div>
                 </div>
               </div>
@@ -404,8 +406,8 @@
             <div class="about-section">
               <div class="about-head">ML Model</div>
               <div class="about-text">
-                Ensemble of Random Forest + Gradient Boosting trained on <b>32 quarterly observations</b> (2018–2025).<br>
-                5-fold CV accuracy: <b>~80%</b> &nbsp;|&nbsp; LOO accuracy: <b>~78%</b>
+                Ensemble of Random Forest + Gradient Boosting trained on <b>52 quarterly observations</b> (FY2013–FY2025).<br>
+                5-fold CV accuracy: <b>78.6%</b> &nbsp;|&nbsp; LOO accuracy: <b>68.8%</b>
               </div>
             </div>
             <div class="about-section">
