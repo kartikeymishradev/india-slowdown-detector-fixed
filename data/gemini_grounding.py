@@ -113,9 +113,10 @@ def _load_disk_cache():
 
 def _save_disk_cache():
     """Persist the current in-memory cache state to disk. Best-effort --
-    if /tmp isn't writable for some reason, we just keep running on the
-    in-memory cache for the rest of this process's lifetime."""
+    if the directory isn't writable for some reason, we just keep running on
+    the in-memory cache for the rest of this process's lifetime."""
     try:
+        os.makedirs(os.path.dirname(_CACHE_FILE), exist_ok=True)
         with open(_CACHE_FILE, "w") as f:
             json.dump({"grounding": _cache, "extended": _extended_cache}, f)
     except Exception as e:

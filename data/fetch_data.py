@@ -93,7 +93,7 @@ def fetch_exports_yoy(retries=2):
     wild percentage swing on the dashboard."""
     url = (
         "https://api.data.gov.in/resource/e8b0e12d-f3a3-4cb0-84c9-4e4c7cf89dd0"
-        "?api-key=579b464db66ec23bdd000001cdd3946e44ce4aab0ddd8f4b3c4b9e73"
+        f"?api-key={os.environ.get('DATA_GOV_IN_API_KEY', '579b464db66ec23bdd000001cdd3946e44ce4aab0ddd8f4b3c4b9e73')}"
         "&format=json&limit=2"
     )
     for attempt in range(retries + 1):
