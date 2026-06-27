@@ -68,7 +68,14 @@ function setHeroBanner(risk, label) {
   const banner = null;
   const status = document.getElementById('sb-status-label');
   const sub = null;
-  const scoreEl = document.getElementById('sb-score-num'); if(scoreEl) scoreEl.textContent = risk; const fillEl = document.getElementById('sb-score-fill'); if(fillEl) fillEl.style.width = risk + '%';
+  const scoreEl = document.getElementById('sb-score-num');
+  if(scoreEl) {
+    scoreEl.textContent = risk;
+    const topFactors = Object.entries(FEAT_IMP).slice(0,3).map(([k,v])=>`${k}: ${Math.round(v*100)}%`).join(' · ');
+    scoreEl.title = `Risk Score ${risk}/100\nTop factors: ${topFactors}\n\n0–30: Low risk (Stable)\n31–60: Moderate (Watch)\n61–100: High risk (Slowdown)`;
+    scoreEl.style.cursor = 'help';
+  }
+  const fillEl = document.getElementById('sb-score-fill'); if(fillEl) fillEl.style.width = risk + '%';
 
   const cfg = {
     'Stable':   ['green', 'Economy Stable', 'No immediate slowdown signals detected across major sectors'],
@@ -196,12 +203,12 @@ function buildSectors(sectors) {
     card.innerHTML = `<div class="sec-name">${SEC_ICONS[key]} ${s.name}</div>
       <div class="sec-val">${s.value}${s.unit}</div>
       <span class="sec-badge ${st}">${stLabel}</span>`;
-    card.onclick = () => { selectedSec=key; buildSectors(sectors); buildTrend(s); };
+    card.onclick = () => { selectedSec=key; buildSectors(sectors); buildTrend(s); document.getElementById('section-trends').scrollIntoView({behavior:'smooth', block:'start'}); };
     grid.appendChild(card);
 
     const tab = document.createElement('button');
     tab.className = 's-tab'+(key===selectedSec?' active':'');
-    tab.textContent = SEC_ICONS[key]+' '+s.name.split(' ')[0];
+    tab.innerHTML = SEC_ICONS[key]+' '+s.name.split(' ')[0];
     tab.onclick = () => { selectedSec=key; buildSectors(sectors); buildTrend(s); };
     tabs.appendChild(tab);
   });
@@ -210,20 +217,41 @@ function buildSectors(sectors) {
 function buildTrend(s) {
   const ctx = document.getElementById('trendChart').getContext('2d');
   if (trendChart) trendChart.destroy();
+  const minVal = Math.min(...s.trend, s.avg, s.threshold);
+  const maxVal = Math.max(...s.trend, s.avg, s.threshold);
+  const pad = (maxVal - minVal) * 0.15 || 1;
   trendChart = new Chart(ctx, {
     type: 'bar',
     data: { labels: TLABELS, datasets: [
       { label: s.name, data: s.trend, backgroundColor:'rgba(37,99,235,.2)', borderColor:'#3B82F6', borderWidth:1.5, borderRadius:3, order:2 },
-      { label:'Avg', data:Array(12).fill(s.avg), type:'line', borderColor:'#22C55E', borderWidth:2, borderDash:[4,3], pointRadius:0, fill:false, order:1 },
-      { label:'Threshold', data:Array(12).fill(s.threshold), type:'line', borderColor:'#EF4444', borderWidth:1.5, borderDash:[6,3], pointRadius:0, fill:false, order:0 }
+      { label:'Avg', data:Array(12).fill(s.avg), type:'line', borderColor:'#22C55E', borderWidth:2, borderDash:[6,4], pointRadius:0, fill:false, order:1, tension:0 },
+      { label:'Alert threshold', data:Array(12).fill(s.threshold), type:'line', borderColor:'#EF4444', borderWidth:1.5, borderDash:[6,4], pointRadius:0, fill:false, order:0, tension:0 }
     ]},
     options: {
       responsive:true, maintainAspectRatio:false,
       scales: {
         x: { ticks:{font:{size:10},autoSkip:false,maxRotation:45}, grid:{display:false} },
-        y: { ticks:{font:{size:11}}, title:{display:true,text:s.desc||s.name,font:{size:10}} }
+        y: {
+          min: minVal >= 0 ? 0 : Math.floor(minVal - pad),
+          ticks:{font:{size:11}},
+          title:{display:true,text:s.desc||s.name,font:{size:10}}
+        }
       },
-      plugins: { legend:{display:false}, tooltip:{mode:'index',intersect:false} }
+      plugins: {
+        legend:{display:false},
+        tooltip:{
+          mode:'index', intersect:false,
+          callbacks:{
+            label: ctx => {
+              const lbl = ctx.dataset.label;
+              const val = typeof ctx.raw === 'number' ? ctx.raw.toFixed(1) : ctx.raw;
+              if (lbl==='Avg') return `Avg: ${val}`;
+              if (lbl==='Alert threshold') return `Alert threshold: ${val}`;
+              return `${lbl}: ${val}`;
+            }
+          }
+        }
+      }
     }
   });
 }
@@ -349,6 +377,10 @@ function initHistToggles() {
 async function runAI() {
   const box = document.getElementById('ai-box');
   const btn = document.getElementById('ai-btn');
+  // Save previous analysis if any (not placeholder/error)
+  const prev = box.querySelector('.ai-analysis-entry');
+  const prevText = prev ? prev.querySelector('.ai-analysis-text')?.textContent : null;
+
   box.innerHTML = '<div class="ai-loading"><div class="spinner"></div> AI is analyzing current indicators…</div>';
   btn.disabled = true;
 
@@ -368,7 +400,37 @@ async function runAI() {
     if (!res.ok || json.error) {
       box.innerHTML = `<div class="ai-placeholder">⚠️ ${json.error || 'AI analysis is not configured on this server. Set GEMINI_API_KEY in .env to enable it.'}</div>`;
     } else {
-      box.textContent = json.analysis;
+      // Build new entry
+      const entry = document.createElement('div');
+      entry.className = 'ai-analysis-entry';
+      const timestamp = new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
+      const textEl = document.createElement('div');
+      textEl.className = 'ai-analysis-text';
+      textEl.textContent = json.analysis;
+      entry.appendChild(textEl);
+      box.innerHTML = '';
+      box.appendChild(entry);
+
+      // Restore previous analysis collapsed
+      if (prevText) {
+        const prevEntry = document.createElement('details');
+        prevEntry.className = 'ai-prev-entry';
+        prevEntry.innerHTML = `<summary>Previous analysis</summary><div class="ai-analysis-text ai-prev-text">${prevText}</div>`;
+        box.appendChild(prevEntry);
+      }
+      // Add copy button after analysis renders
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'ai-copy-btn';
+      copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy';
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(textEl.textContent).then(() => {
+          copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 12 4 10"/></svg> Copied!';
+          setTimeout(() => {
+            copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy';
+          }, 2000);
+        });
+      };
+      entry.appendChild(copyBtn);
     }
   } catch (err) {
     box.innerHTML = '<div class="ai-placeholder">⚠️ Could not reach the analysis server. Check that the Flask app is running.</div>';
@@ -666,7 +728,12 @@ function initLearnSearch() {
   });
 }
 
-const CHAT_HISTORY = [];
+const CHAT_HISTORY = (() => {
+  try { return JSON.parse(sessionStorage.getItem('chat_history') || '[]'); } catch { return []; }
+})();
+function saveChatHistory() {
+  try { sessionStorage.setItem('chat_history', JSON.stringify(CHAT_HISTORY.slice(-20))); } catch {}
+}
 
 // ── Cached answers for suggested questions (zero API calls) ──────────────────
 const CACHED_ANSWERS = {
@@ -735,7 +802,6 @@ async function sendQuestion() {
   if (now < _chatCooldownUntil) {
     const secsLeft = Math.ceil((_chatCooldownUntil - now) / 1000);
     btn.textContent = `Wait ${secsLeft}s`;
-    setTimeout(() => { btn.textContent = 'Send'; }, (_chatCooldownUntil - now));
     return;
   }
   _chatCooldownUntil = now + 15000;
@@ -743,6 +809,7 @@ async function sendQuestion() {
   input.value = ''; btn.disabled = true;
   appendMsg(q, 'user');
   CHAT_HISTORY.push({role:'user', text:q});
+  saveChatHistory();
   showTyping();
 
   // Check cache first — exact match on suggested questions
@@ -758,9 +825,23 @@ async function sendQuestion() {
   removeTyping();
   appendMsg(answer, 'bot');
   CHAT_HISTORY.push({role:'bot', text:answer});
+  saveChatHistory();
 
-  // Re-enable after cooldown expires
-  setTimeout(() => { btn.disabled = false; btn.textContent = 'Send'; }, 15000);
+  // Re-enable after cooldown expires — live countdown every second
+  btn.setAttribute('data-cooldown', '1');
+  const cdInterval = setInterval(() => {
+    const remaining = Math.ceil((_chatCooldownUntil - Date.now()) / 1000);
+    if (remaining <= 0) {
+      clearInterval(cdInterval);
+      btn.disabled = false;
+      btn.textContent = 'Ask';
+      btn.removeAttribute('data-cooldown');
+      btn.style.setProperty('--cd-pct', '100%');
+    } else {
+      btn.textContent = `${remaining}s`;
+      btn.style.setProperty('--cd-pct', `${Math.round(((15 - remaining) / 15) * 100)}%`);
+    }
+  }, 250);
   input.focus();
 }
 
@@ -774,4 +855,10 @@ function initLearnSection(indicators) {
   renderDefCards();
   initLearnTabs();
   initLearnSearch();
+  // Restore chat history from session
+  if (CHAT_HISTORY.length > 0) {
+    const box = document.getElementById('chat-messages');
+    box.innerHTML = ''; // clear default welcome msg
+    CHAT_HISTORY.forEach(m => appendMsg(m.text, m.role === 'user' ? 'user' : 'bot'));
+  }
 }
