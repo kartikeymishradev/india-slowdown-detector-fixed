@@ -71,8 +71,8 @@ function setHeroBanner(risk, label) {
   const scoreEl = document.getElementById('sb-score-num'); if(scoreEl) scoreEl.textContent = risk; const fillEl = document.getElementById('sb-score-fill'); if(fillEl) fillEl.style.width = risk + '%';
 
   const cfg = {
-    'Stable':   ['green', {check_svg} Economy Stable, 'No immediate slowdown signals detected across major sectors'],
-    'Warning':  ['amber', {warn_svg} Moderate Warning, 'Trade exports declining & credit growth softening — watch closely'],
+    'Stable':   ['green', 'Economy Stable', 'No immediate slowdown signals detected across major sectors'],
+    'Warning':  ['amber', 'Moderate Warning', 'Trade exports declining & credit growth softening — watch closely'],
     'Slowdown': ['red',   'Slowdown Detected', 'Multiple sector alerts triggered — high economic risk'],
   };
   const [cls, st, sb] = cfg[label] || ['', 'Analyzing…', 'Fetching live indicators'];
