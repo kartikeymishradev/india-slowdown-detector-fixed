@@ -29,7 +29,13 @@ const TLABELS = Array.from({length:12},(_,i)=>mLabel(i-11));
 let trendChart=null, gaugeChart=null, featChart=null, histChart=null;
 let selectedSec = 'manufacturing';
 const SEC_KEYS = ['manufacturing','banking','agriculture','trade','employment'];
-const SEC_ICONS = {manufacturing:'🏭',banking:'🏦',agriculture:'🌾',trade:'🚢',employment:'👥'};
+const SEC_ICONS = {
+  manufacturing: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><path d="M2 20h20M4 20V8l6 4V8l6 4V4l4 4v12"/></svg>',
+  banking:       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+  agriculture:   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12"/><path d="M12 6v6l4 2"/></svg>',
+  trade:         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>',
+  employment:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+};
 
 const FEAT_IMP = {
   'Unemployment':   0.171,
@@ -65,9 +71,9 @@ function setHeroBanner(risk, label) {
   const scoreEl = document.getElementById('sb-score-num'); if(scoreEl) scoreEl.textContent = risk; const fillEl = document.getElementById('sb-score-fill'); if(fillEl) fillEl.style.width = risk + '%';
 
   const cfg = {
-    'Stable':   ['green', '✅ Economy Stable', 'No immediate slowdown signals detected across major sectors'],
-    'Warning':  ['amber', '⚠️ Moderate Warning', 'Trade exports declining & credit growth softening — watch closely'],
-    'Slowdown': ['red',   '🚨 Slowdown Detected', 'Multiple sector alerts triggered — high economic risk'],
+    'Stable':   ['green', {check_svg} Economy Stable, 'No immediate slowdown signals detected across major sectors'],
+    'Warning':  ['amber', {warn_svg} Moderate Warning, 'Trade exports declining & credit growth softening — watch closely'],
+    'Slowdown': ['red',   'Slowdown Detected', 'Multiple sector alerts triggered — high economic risk'],
   };
   const [cls, st, sb] = cfg[label] || ['', 'Analyzing…', 'Fetching live indicators'];
   const sbStatus = document.getElementById('sb-status'); if(sbStatus) sbStatus.className = 'sb-status ' + cls;
@@ -98,10 +104,10 @@ function setMacro(data) {
   }) + ' IST';
 
   const SOURCE_BADGE = {
-    live:         '<span class="src-badge src-live" title="Fetched live from forex API — updates every page load">🟢 Live</span>',
-    ai_grounded:  ageBadge(data.grounding_status?.grounding_age_seconds, 'src-ai', '🔵'),
-    quarterly:    '<span class="src-badge src-quarterly" title="Released quarterly by MOSPI — updated every ~3 months">🗓️ Quarterly</span>',
-    biannual:     '<span class="src-badge src-quarterly" title="RBI MPC meets 6 times/year — updated on policy dates">🏦 RBI Policy</span>',
+    live:         '<span class="src-badge src-live" title="Fetched live from forex API — updates every page load"><svg width="10" height="10" viewBox="0 0 10 10" style="display:inline;vertical-align:middle"><circle cx="5" cy="5" r="4" fill="#22C55E"/></svg> Live</span>',
+    ai_grounded:  ageBadge(data.grounding_status?.grounding_age_seconds, 'src-ai', '<svg width="10" height="10" viewBox="0 0 10 10" style="display:inline;vertical-align:middle"><circle cx="5" cy="5" r="4" fill="#3B82F6"/></svg>'),
+    quarterly:    '<span class="src-badge src-quarterly" title="Released quarterly by MOSPI — updated every ~3 months"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Quarterly</span>',
+    biannual:     '<span class="src-badge src-quarterly" title="RBI MPC meets 6 times/year — updated on policy dates"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> RBI Policy</span>',
   };
 
   // Each indicator gets the badge that honestly reflects its update frequency
