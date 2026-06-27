@@ -29,7 +29,13 @@ const TLABELS = Array.from({length:12},(_,i)=>mLabel(i-11));
 let trendChart=null, gaugeChart=null, featChart=null, histChart=null;
 let selectedSec = 'manufacturing';
 const SEC_KEYS = ['manufacturing','banking','agriculture','trade','employment'];
-const SEC_ICONS = {manufacturing:'🏭',banking:'🏦',agriculture:'🌾',trade:'🚢',employment:'👥'};
+const SEC_ICONS = {
+  manufacturing: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><path d="M2 20h20M4 20V8l6 4V8l6 4V4l4 4v12"/></svg>',
+  banking:       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>',
+  agriculture:   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><path d="M12 2a10 10 0 0 1 10 10c0 5.52-4.48 10-10 10S2 17.52 2 12"/><path d="M12 6v6l4 2"/></svg>',
+  trade:         '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>',
+  employment:    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>'
+};
 
 const FEAT_IMP = {
   'Unemployment':   0.171,
@@ -62,12 +68,19 @@ function setHeroBanner(risk, label) {
   const banner = null;
   const status = document.getElementById('sb-status-label');
   const sub = null;
-  const scoreEl = document.getElementById('sb-score-num'); if(scoreEl) scoreEl.textContent = risk; const fillEl = document.getElementById('sb-score-fill'); if(fillEl) fillEl.style.width = risk + '%';
+  const scoreEl = document.getElementById('sb-score-num');
+  if(scoreEl) {
+    scoreEl.textContent = risk;
+    const topFactors = Object.entries(FEAT_IMP).slice(0,3).map(([k,v])=>`${k}: ${Math.round(v*100)}%`).join(' · ');
+    scoreEl.title = `Risk Score ${risk}/100\nTop factors: ${topFactors}\n\n0–30: Low risk (Stable)\n31–60: Moderate (Watch)\n61–100: High risk (Slowdown)`;
+    scoreEl.style.cursor = 'help';
+  }
+  const fillEl = document.getElementById('sb-score-fill'); if(fillEl) fillEl.style.width = risk + '%';
 
   const cfg = {
-    'Stable':   ['green', '✅ Economy Stable', 'No immediate slowdown signals detected across major sectors'],
-    'Warning':  ['amber', '⚠️ Moderate Warning', 'Trade exports declining & credit growth softening — watch closely'],
-    'Slowdown': ['red',   '🚨 Slowdown Detected', 'Multiple sector alerts triggered — high economic risk'],
+    'Stable':   ['green', 'Economy Stable', 'No immediate slowdown signals detected across major sectors'],
+    'Warning':  ['amber', 'Moderate Warning', 'Trade exports declining & credit growth softening — watch closely'],
+    'Slowdown': ['red',   'Slowdown Detected', 'Multiple sector alerts triggered — high economic risk'],
   };
   const [cls, st, sb] = cfg[label] || ['', 'Analyzing…', 'Fetching live indicators'];
   const sbStatus = document.getElementById('sb-status'); if(sbStatus) sbStatus.className = 'sb-status ' + cls;
@@ -98,10 +111,10 @@ function setMacro(data) {
   }) + ' IST';
 
   const SOURCE_BADGE = {
-    live:         '<span class="src-badge src-live" title="Fetched live from forex API — updates every page load">🟢 Live</span>',
-    ai_grounded:  ageBadge(data.grounding_status?.grounding_age_seconds, 'src-ai', '🔵'),
-    quarterly:    '<span class="src-badge src-quarterly" title="Released quarterly by MOSPI — updated every ~3 months">🗓️ Quarterly</span>',
-    biannual:     '<span class="src-badge src-quarterly" title="RBI MPC meets 6 times/year — updated on policy dates">🏦 RBI Policy</span>',
+    live:         '<span class="src-badge src-live" title="Fetched live from forex API — updates every page load"><svg width="10" height="10" viewBox="0 0 10 10" style="display:inline;vertical-align:middle"><circle cx="5" cy="5" r="4" fill="#22C55E"/></svg> Live</span>',
+    ai_grounded:  ageBadge(data.grounding_status?.grounding_age_seconds, 'src-ai', '<svg width="10" height="10" viewBox="0 0 10 10" style="display:inline;vertical-align:middle"><circle cx="5" cy="5" r="4" fill="#3B82F6"/></svg>'),
+    quarterly:    '<span class="src-badge src-quarterly" title="Released quarterly by MOSPI — updated every ~3 months"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> Quarterly</span>',
+    biannual:     '<span class="src-badge src-quarterly" title="RBI MPC meets 6 times/year — updated on policy dates"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> RBI Policy</span>',
   };
 
   // Each indicator gets the badge that honestly reflects its update frequency
@@ -190,12 +203,12 @@ function buildSectors(sectors) {
     card.innerHTML = `<div class="sec-name">${SEC_ICONS[key]} ${s.name}</div>
       <div class="sec-val">${s.value}${s.unit}</div>
       <span class="sec-badge ${st}">${stLabel}</span>`;
-    card.onclick = () => { selectedSec=key; buildSectors(sectors); buildTrend(s); };
+    card.onclick = () => { selectedSec=key; buildSectors(sectors); buildTrend(s); document.getElementById('section-trends').scrollIntoView({behavior:'smooth', block:'start'}); };
     grid.appendChild(card);
 
     const tab = document.createElement('button');
     tab.className = 's-tab'+(key===selectedSec?' active':'');
-    tab.textContent = SEC_ICONS[key]+' '+s.name.split(' ')[0];
+    tab.innerHTML = SEC_ICONS[key]+' '+s.name.split(' ')[0];
     tab.onclick = () => { selectedSec=key; buildSectors(sectors); buildTrend(s); };
     tabs.appendChild(tab);
   });
@@ -204,20 +217,41 @@ function buildSectors(sectors) {
 function buildTrend(s) {
   const ctx = document.getElementById('trendChart').getContext('2d');
   if (trendChart) trendChart.destroy();
+  const minVal = Math.min(...s.trend, s.avg, s.threshold);
+  const maxVal = Math.max(...s.trend, s.avg, s.threshold);
+  const pad = (maxVal - minVal) * 0.15 || 1;
   trendChart = new Chart(ctx, {
     type: 'bar',
     data: { labels: TLABELS, datasets: [
       { label: s.name, data: s.trend, backgroundColor:'rgba(37,99,235,.2)', borderColor:'#3B82F6', borderWidth:1.5, borderRadius:3, order:2 },
-      { label:'Avg', data:Array(12).fill(s.avg), type:'line', borderColor:'#22C55E', borderWidth:2, borderDash:[4,3], pointRadius:0, fill:false, order:1 },
-      { label:'Threshold', data:Array(12).fill(s.threshold), type:'line', borderColor:'#EF4444', borderWidth:1.5, borderDash:[6,3], pointRadius:0, fill:false, order:0 }
+      { label:'Avg', data:Array(12).fill(s.avg), type:'line', borderColor:'#22C55E', borderWidth:2, borderDash:[6,4], pointRadius:0, fill:false, order:1, tension:0 },
+      { label:'Alert threshold', data:Array(12).fill(s.threshold), type:'line', borderColor:'#EF4444', borderWidth:1.5, borderDash:[6,4], pointRadius:0, fill:false, order:0, tension:0 }
     ]},
     options: {
       responsive:true, maintainAspectRatio:false,
       scales: {
         x: { ticks:{font:{size:10},autoSkip:false,maxRotation:45}, grid:{display:false} },
-        y: { ticks:{font:{size:11}}, title:{display:true,text:s.desc||s.name,font:{size:10}} }
+        y: {
+          min: minVal >= 0 ? 0 : Math.floor(minVal - pad),
+          ticks:{font:{size:11}},
+          title:{display:true,text:s.desc||s.name,font:{size:10}}
+        }
       },
-      plugins: { legend:{display:false}, tooltip:{mode:'index',intersect:false} }
+      plugins: {
+        legend:{display:false},
+        tooltip:{
+          mode:'index', intersect:false,
+          callbacks:{
+            label: ctx => {
+              const lbl = ctx.dataset.label;
+              const val = typeof ctx.raw === 'number' ? ctx.raw.toFixed(1) : ctx.raw;
+              if (lbl==='Avg') return `Avg: ${val}`;
+              if (lbl==='Alert threshold') return `Alert threshold: ${val}`;
+              return `${lbl}: ${val}`;
+            }
+          }
+        }
+      }
     }
   });
 }
@@ -343,6 +377,10 @@ function initHistToggles() {
 async function runAI() {
   const box = document.getElementById('ai-box');
   const btn = document.getElementById('ai-btn');
+  // Save previous analysis if any (not placeholder/error)
+  const prev = box.querySelector('.ai-analysis-entry');
+  const prevText = prev ? prev.querySelector('.ai-analysis-text')?.textContent : null;
+
   box.innerHTML = '<div class="ai-loading"><div class="spinner"></div> AI is analyzing current indicators…</div>';
   btn.disabled = true;
 
@@ -362,7 +400,37 @@ async function runAI() {
     if (!res.ok || json.error) {
       box.innerHTML = `<div class="ai-placeholder">⚠️ ${json.error || 'AI analysis is not configured on this server. Set GEMINI_API_KEY in .env to enable it.'}</div>`;
     } else {
-      box.textContent = json.analysis;
+      // Build new entry
+      const entry = document.createElement('div');
+      entry.className = 'ai-analysis-entry';
+      const timestamp = new Date().toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit'});
+      const textEl = document.createElement('div');
+      textEl.className = 'ai-analysis-text';
+      textEl.textContent = json.analysis;
+      entry.appendChild(textEl);
+      box.innerHTML = '';
+      box.appendChild(entry);
+
+      // Restore previous analysis collapsed
+      if (prevText) {
+        const prevEntry = document.createElement('details');
+        prevEntry.className = 'ai-prev-entry';
+        prevEntry.innerHTML = `<summary>Previous analysis</summary><div class="ai-analysis-text ai-prev-text">${prevText}</div>`;
+        box.appendChild(prevEntry);
+      }
+      // Add copy button after analysis renders
+      const copyBtn = document.createElement('button');
+      copyBtn.className = 'ai-copy-btn';
+      copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy';
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(textEl.textContent).then(() => {
+          copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 12 4 10"/></svg> Copied!';
+          setTimeout(() => {
+            copyBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy';
+          }, 2000);
+        });
+      };
+      entry.appendChild(copyBtn);
     }
   } catch (err) {
     box.innerHTML = '<div class="ai-placeholder">⚠️ Could not reach the analysis server. Check that the Flask app is running.</div>';
@@ -660,7 +728,12 @@ function initLearnSearch() {
   });
 }
 
-const CHAT_HISTORY = [];
+const CHAT_HISTORY = (() => {
+  try { return JSON.parse(sessionStorage.getItem('chat_history') || '[]'); } catch { return []; }
+})();
+function saveChatHistory() {
+  try { sessionStorage.setItem('chat_history', JSON.stringify(CHAT_HISTORY.slice(-20))); } catch {}
+}
 
 // ── Cached answers for suggested questions (zero API calls) ──────────────────
 const CACHED_ANSWERS = {
@@ -729,7 +802,6 @@ async function sendQuestion() {
   if (now < _chatCooldownUntil) {
     const secsLeft = Math.ceil((_chatCooldownUntil - now) / 1000);
     btn.textContent = `Wait ${secsLeft}s`;
-    setTimeout(() => { btn.textContent = 'Send'; }, (_chatCooldownUntil - now));
     return;
   }
   _chatCooldownUntil = now + 15000;
@@ -737,6 +809,7 @@ async function sendQuestion() {
   input.value = ''; btn.disabled = true;
   appendMsg(q, 'user');
   CHAT_HISTORY.push({role:'user', text:q});
+  saveChatHistory();
   showTyping();
 
   // Check cache first — exact match on suggested questions
@@ -752,9 +825,23 @@ async function sendQuestion() {
   removeTyping();
   appendMsg(answer, 'bot');
   CHAT_HISTORY.push({role:'bot', text:answer});
+  saveChatHistory();
 
-  // Re-enable after cooldown expires
-  setTimeout(() => { btn.disabled = false; btn.textContent = 'Send'; }, 15000);
+  // Re-enable after cooldown expires — live countdown every second
+  btn.setAttribute('data-cooldown', '1');
+  const cdInterval = setInterval(() => {
+    const remaining = Math.ceil((_chatCooldownUntil - Date.now()) / 1000);
+    if (remaining <= 0) {
+      clearInterval(cdInterval);
+      btn.disabled = false;
+      btn.textContent = 'Ask';
+      btn.removeAttribute('data-cooldown');
+      btn.style.setProperty('--cd-pct', '100%');
+    } else {
+      btn.textContent = `${remaining}s`;
+      btn.style.setProperty('--cd-pct', `${Math.round(((15 - remaining) / 15) * 100)}%`);
+    }
+  }, 250);
   input.focus();
 }
 
@@ -768,4 +855,10 @@ function initLearnSection(indicators) {
   renderDefCards();
   initLearnTabs();
   initLearnSearch();
+  // Restore chat history from session
+  if (CHAT_HISTORY.length > 0) {
+    const box = document.getElementById('chat-messages');
+    box.innerHTML = ''; // clear default welcome msg
+    CHAT_HISTORY.forEach(m => appendMsg(m.text, m.role === 'user' ? 'user' : 'bot'));
+  }
 }

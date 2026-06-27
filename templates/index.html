@@ -173,8 +173,8 @@
                 <div class="pred-conf">Confidence: <b id="pred-conf">—</b></div>
                 <div class="prob-list" id="prob-list"></div>
                 <div class="model-stats">
-                  <div class="stat-row"><span>CV Accuracy</span><b>78.6%</b></div>
-                  <div class="stat-row"><span>Training data</span><b>32 quarters</b></div>
+                  <div class="stat-row"><span>CV Accuracy</span><b>~80%</b></div>
+<div class="stat-row"><span>Training data</span><b>52 quarters</b></div>
                   <div class="stat-row"><span>Algorithm</span><b>Ensemble</b></div>
                 </div>
               </div>
@@ -439,9 +439,19 @@
 function sbNavigate(el) {
   document.querySelectorAll('.sb-link').forEach(l => l.classList.remove('active'));
   el.classList.add('active');
+  // Mobile: close sidebar after nav click
+  if (window.innerWidth <= 768) {
+    document.querySelector('.sidebar').classList.remove('open');
+  }
 }
 function toggleSidebar() {
-  document.querySelector('.app-shell').classList.toggle('sb-collapsed');
+  if (window.innerWidth <= 768) {
+    // Mobile: toggle open class on sidebar
+    document.querySelector('.sidebar').classList.toggle('open');
+  } else {
+    // Desktop: toggle collapsed on app-shell
+    document.querySelector('.app-shell').classList.toggle('sb-collapsed');
+  }
 }
 // Scroll-spy: highlight nav link based on visible section
 const observer = new IntersectionObserver(entries => {
