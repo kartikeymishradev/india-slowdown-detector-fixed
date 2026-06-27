@@ -89,15 +89,72 @@ _cache = {"data": None, "ts": 0, "last_attempt": 0}
 # state (which itself may be None on a true cold start), and the caller's
 # existing config.json fallback kicks in as the final safety net.
 
+# ── Upstash Redis cache (Vercel-persistent) ──────────────────────────────────
+# Falls back to disk cache if Redis env vars not set (local dev).
+# Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in Vercel env vars.
+_REDIS_URL   = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
+_REDIS_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
+_REDIS_KEY   = "grounding_cache_v1"
+
 _CACHE_FILE = os.path.join(
     os.environ.get("GROUNDING_CACHE_DIR", os.path.join(os.path.dirname(__file__), "..", "tmp")), "grounding_cache.json"
 )
 
 
+def _redis_get():
+    """Fetch cache from Upstash Redis. Returns parsed dict or None."""
+    if not _REDIS_URL or not _REDIS_TOKEN:
+        return None
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            f"{_REDIS_URL}/get/{_REDIS_KEY}",
+            headers={"Authorization": f"Bearer {_REDIS_TOKEN}"}
+        )
+        with urllib.request.urlopen(req, timeout=3) as r:
+            result = json.loads(r.read())
+        if result.get("result"):
+            return json.loads(result["result"])
+    except Exception as e:
+        print(f"⚠️  Redis GET failed: {e}")
+    return None
+
+
+def _redis_set(data):
+    """Save cache to Upstash Redis with 25-hour TTL. Best-effort."""
+    if not _REDIS_URL or not _REDIS_TOKEN:
+        return
+    try:
+        import urllib.request
+        payload = json.dumps(data).encode()
+        # SET key value EX 90000 (25 hours)
+        req = urllib.request.Request(
+            f"{_REDIS_URL}/set/{_REDIS_KEY}/ex/90000",
+            data=payload,
+            headers={
+                "Authorization": f"Bearer {_REDIS_TOKEN}",
+                "Content-Type": "application/json"
+            },
+            method="POST"
+        )
+        with urllib.request.urlopen(req, timeout=3) as r:
+            pass
+    except Exception as e:
+        print(f"⚠️  Redis SET failed: {e}")
+
+
 def _load_disk_cache():
-    """Load persisted cache state from disk into the in-memory dicts, once,
-    on module import. Silently does nothing if the file doesn't exist or is
-    corrupt -- this must never crash app startup."""
+    """Load cache — tries Redis first (Vercel), falls back to disk (local dev)."""
+    # Try Redis first
+    saved = _redis_get()
+    if saved:
+        print("✅ Cache loaded from Redis")
+        if "grounding" in saved:
+            _cache.update(saved["grounding"])
+        if "extended" in saved:
+            _extended_cache.update(saved["extended"])
+        return
+    # Fallback: disk cache
     try:
         if not os.path.exists(_CACHE_FILE):
             return
@@ -107,18 +164,21 @@ def _load_disk_cache():
             _cache.update(saved["grounding"])
         if "extended" in saved:
             _extended_cache.update(saved["extended"])
+        print("✅ Cache loaded from disk")
     except Exception as e:
         print(f"⚠️  Could not load grounding cache from disk: {e}")
 
 
 def _save_disk_cache():
-    """Persist the current in-memory cache state to disk. Best-effort --
-    if the directory isn't writable for some reason, we just keep running on
-    the in-memory cache for the rest of this process's lifetime."""
+    """Save cache — tries Redis first (Vercel), also saves to disk (local dev)."""
+    payload = {"grounding": _cache, "extended": _extended_cache}
+    # Save to Redis
+    _redis_set(payload)
+    # Also save to disk (local dev fallback)
     try:
         os.makedirs(os.path.dirname(_CACHE_FILE), exist_ok=True)
         with open(_CACHE_FILE, "w") as f:
-            json.dump({"grounding": _cache, "extended": _extended_cache}, f)
+            json.dump(payload, f)
     except Exception as e:
         print(f"⚠️  Could not save grounding cache to disk: {e}")
 
