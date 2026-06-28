@@ -1,7 +1,7 @@
 // India Economic Slowdown Detector — Frontend
 
 const loadingMessages = [
-  "Analyzing economic indicators...",
+  "Decoding India’s economic signals...",
   "Building slowdown model...",
   "Fetching live macro data...",
   "Calculating risk score...",
