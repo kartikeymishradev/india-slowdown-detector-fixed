@@ -432,6 +432,14 @@ body {
 .extra-sub  { font-size: 10px; color: var(--muted); margin-top: 3px; }
 .extra-sub.flag-bad  { color: var(--red);   font-weight: 600; }
 .extra-sub.flag-good { color: var(--green); font-weight: 600; }
+.extra-fetched-via-ai {
+  font-size: 9px;
+  color: var(--accent-blue, #3B82F6);
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--border);
+  opacity: .75;
+}
 
 /* ════════════════════════════════════════════
    DATA SOURCE BADGES

@@ -144,15 +144,42 @@ def _redis_set(data):
 
 
 def _load_disk_cache():
-    """Load cache — tries Redis first (Vercel), falls back to disk (local dev)."""
+    """Load cache — tries Redis first (Vercel), falls back to disk (local dev).
+
+    IMPORTANT: ts:0 is a sentinel meaning "never successfully fetched", not a
+    real timestamp. It gets persisted to Redis/disk whenever _save_disk_cache()
+    runs before the first successful Gemini fetch (e.g. right after a fresh
+    deploy). If we blindly did _cache.update(saved["grounding"]) here, a
+    fresh cold-start container would load that ts:0 into memory and
+    get_grounding_status() would then report "Not yet fetched" forever, even
+    after a later successful refresh wrote a real ts to Redis from a
+    DIFFERENT container -- because this container's in-memory ts:0 looks
+    "already set" and the merge below has to be careful not to let it win.
+
+    We always take "data" from whatever was saved (so dashboard values still
+    populate), but only adopt "ts" if it's a real (>0) timestamp -- otherwise
+    we leave ts at its current in-memory value (0, i.e. unset) so that
+    get_grounding_status()'s "g_ts is None" check still correctly falls
+    through to re-check Redis on every call rather than caching a false
+    "never fetched" verdict for this container's lifetime."""
+
+    def _apply(target_cache, section):
+        if not section:
+            return
+        if section.get("data"):
+            target_cache["data"] = section["data"]
+        raw_ts = section.get("ts")
+        if raw_ts and float(raw_ts) > 0:
+            target_cache["ts"] = float(raw_ts)
+        # else: leave target_cache["ts"] untouched (stays 0/unset) -- do NOT
+        # overwrite with the ts:0 sentinel.
+
     # Try Redis first
     saved = _redis_get()
     if saved:
         print("✅ Cache loaded from Redis")
-        if "grounding" in saved:
-            _cache.update(saved["grounding"])
-        if "extended" in saved:
-            _extended_cache.update(saved["extended"])
+        _apply(_cache, saved.get("grounding"))
+        _apply(_extended_cache, saved.get("extended"))
         return
     # Fallback: disk cache
     try:
@@ -160,10 +187,8 @@ def _load_disk_cache():
             return
         with open(_CACHE_FILE, "r") as f:
             saved = json.load(f)
-        if "grounding" in saved:
-            _cache.update(saved["grounding"])
-        if "extended" in saved:
-            _extended_cache.update(saved["extended"])
+        _apply(_cache, saved.get("grounding"))
+        _apply(_extended_cache, saved.get("extended"))
         print("✅ Cache loaded from disk")
     except Exception as e:
         print(f"⚠️  Could not load grounding cache from disk: {e}")
@@ -652,20 +677,31 @@ def get_grounding_status():
     Always checks Redis first so Vercel cold-start containers report the
     correct age instead of always showing 'Not yet fetched'."""
     now = time.time()
-    # In-memory ts (warm container, same process)
-    g_ts = _cache.get("ts", 0)
-    e_ts = _extended_cache.get("ts", 0)
-    # If in-memory is empty (cold start / new container), read ts from Redis
-    if not g_ts or not e_ts:
+
+    # In-memory ts (warm container, same process).
+    # Use None sentinel — ts==0 means "never fetched", NOT a valid timestamp.
+    g_ts = _cache.get("ts") or None      # converts 0 → None
+    e_ts = _extended_cache.get("ts") or None
+
+    # If in-memory is empty (cold start / new container), read ts from Redis.
+    if g_ts is None or e_ts is None:
         try:
             saved = _redis_get()
             if saved:
-                if not g_ts and saved.get("grounding", {}).get("ts"):
-                    g_ts = saved["grounding"]["ts"]
-                if not e_ts and saved.get("extended", {}).get("ts"):
-                    e_ts = saved["extended"]["ts"]
+                if g_ts is None:
+                    raw = saved.get("grounding", {}).get("ts")
+                    # Accept only a real timestamp (float > 0), not the
+                    # initial 0 sentinel that _save_disk_cache may have persisted
+                    # before the first successful Gemini fetch.
+                    if raw and float(raw) > 0:
+                        g_ts = float(raw)
+                if e_ts is None:
+                    raw = saved.get("extended", {}).get("ts")
+                    if raw and float(raw) > 0:
+                        e_ts = float(raw)
         except Exception:
             pass
+
     return {
         "grounding_age_seconds": int(now - g_ts) if g_ts else None,
         "extended_age_seconds":  int(now - e_ts) if e_ts else None,
