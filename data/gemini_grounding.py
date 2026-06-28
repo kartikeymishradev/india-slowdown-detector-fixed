@@ -652,20 +652,31 @@ def get_grounding_status():
     Always checks Redis first so Vercel cold-start containers report the
     correct age instead of always showing 'Not yet fetched'."""
     now = time.time()
-    # In-memory ts (warm container, same process)
-    g_ts = _cache.get("ts", 0)
-    e_ts = _extended_cache.get("ts", 0)
-    # If in-memory is empty (cold start / new container), read ts from Redis
-    if not g_ts or not e_ts:
+
+    # In-memory ts (warm container, same process).
+    # Use None sentinel — ts==0 means "never fetched", NOT a valid timestamp.
+    g_ts = _cache.get("ts") or None      # converts 0 → None
+    e_ts = _extended_cache.get("ts") or None
+
+    # If in-memory is empty (cold start / new container), read ts from Redis.
+    if g_ts is None or e_ts is None:
         try:
             saved = _redis_get()
             if saved:
-                if not g_ts and saved.get("grounding", {}).get("ts"):
-                    g_ts = saved["grounding"]["ts"]
-                if not e_ts and saved.get("extended", {}).get("ts"):
-                    e_ts = saved["extended"]["ts"]
+                if g_ts is None:
+                    raw = saved.get("grounding", {}).get("ts")
+                    # Accept only a real timestamp (float > 0), not the
+                    # initial 0 sentinel that _save_disk_cache may have persisted
+                    # before the first successful Gemini fetch.
+                    if raw and float(raw) > 0:
+                        g_ts = float(raw)
+                if e_ts is None:
+                    raw = saved.get("extended", {}).get("ts")
+                    if raw and float(raw) > 0:
+                        e_ts = float(raw)
         except Exception:
             pass
+
     return {
         "grounding_age_seconds": int(now - g_ts) if g_ts else None,
         "extended_age_seconds":  int(now - e_ts) if e_ts else None,
