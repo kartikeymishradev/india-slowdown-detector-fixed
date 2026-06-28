@@ -35,7 +35,7 @@ def load_model():
     global model
     if os.path.exists(MODEL_PATH):
         model = joblib.load(MODEL_PATH)
-        print("✅ ML model loaded")
+        print(" ML model loaded")
     else:
         print("⚠️  model.pkl not found — run: python model/train_model.py")
 
@@ -314,9 +314,9 @@ def _startup_refresh():
             if grounding_empty and extended_empty:
                 print("🔄 Startup: cache empty, triggering initial AI-grounded data refresh…")
                 refresh_all_grounding()
-                print("✅ Startup refresh complete.")
+                print(" Startup refresh complete.")
             else:
-                print("✅ Startup: cache already populated, skipping refresh.")
+                print(" Startup: cache already populated, skipping refresh.")
         except Exception as e:
             print(f"⚠️  Startup refresh failed (non-fatal): {e}")
     threading.Thread(target=_run, daemon=True).start()
@@ -326,5 +326,5 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_ENV") == "development"
     _startup_refresh()
-    print(f"🚀 Starting server on http://localhost:{port}")
+    print(f" Starting server on http://localhost:{port}")
     app.run(host="0.0.0.0", port=port, debug=debug)
