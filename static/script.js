@@ -292,9 +292,20 @@ function fmtCr(n) {
   return Math.round(n).toLocaleString('en-IN') + ' Cr';
 }
 
-function buildExtra(ext, derived) {
+function buildExtra(ext, derived, extendedAgeSeconds) {
   const grid = document.getElementById('extra-grid');
   if (!ext) { grid.innerHTML = ''; return; }
+
+  // Same "Updated today / Xh ago / Xd ago" wording as the macro strip badges,
+  // but reused here for the Extended Indicators (Additional Indicators)
+  // section, which is ALSO fully AI-grounded (fetched via Gemini + Google
+  // Search) -- it just wasn't showing a freshness badge before.
+  const freshnessLabel = (() => {
+    if (extendedAgeSeconds == null) return 'Not yet fetched via AI';
+    if (extendedAgeSeconds < 3600) return 'Fetched via AI · today';
+    if (extendedAgeSeconds < 86400) return `Fetched via AI · ${Math.floor(extendedAgeSeconds / 3600)}h ago`;
+    return `Fetched via AI · ${Math.floor(extendedAgeSeconds / 86400)}d ago`;
+  })();
 
   const cards = [
     { name: 'PMI Services', val: ext.pmi_services, unit: '', sub: ext.pmi_services_month || (derived?.services_pmi_below50 ? 'Below 50 — contraction' : 'Expansion zone'), bad: !!derived?.services_pmi_below50 },
@@ -315,6 +326,7 @@ function buildExtra(ext, derived) {
       <div class="extra-name">${c.name}</div>
       <div class="extra-val">${c.val ?? '—'}${c.unit ? ' '+c.unit : ''}</div>
       <div class="extra-sub${c.bad ? ' flag-bad' : c.good ? ' flag-good' : ''}">${c.sub || ''}</div>
+      <div class="extra-fetched-via-ai" title="This whole section is fetched via Gemini + Google Search grounding">${freshnessLabel}</div>
     </div>`).join('');
 }
 
@@ -458,7 +470,7 @@ async function refreshAll() {
   buildTrend(sectors[selectedSec]);
   buildHF(sectors);
   buildDS(data.indicators.demand_supply);
-  buildExtra(data.indicators.extended_indicators, data.indicators.derived_features);
+  buildExtra(data.indicators.extended_indicators, data.indicators.derived_features, data.grounding_status?.extended_age_seconds);
   buildFeat();
   buildHist();
   initHistToggles();
