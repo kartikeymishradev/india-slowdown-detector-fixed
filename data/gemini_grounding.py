@@ -648,11 +648,25 @@ def refresh_all_grounding():
 def get_grounding_status():
     """Lightweight status info for the frontend's 'Last refreshed X min ago'
     badge -- how old is each cache right now, in seconds. Returns None for a
-    timestamp if that cache has never been successfully populated."""
+    timestamp if that cache has never been successfully populated.
+    Always checks Redis first so Vercel cold-start containers report the
+    correct age instead of always showing 'Not yet fetched'."""
     now = time.time()
+    # In-memory ts (warm container, same process)
     g_ts = _cache.get("ts", 0)
     e_ts = _extended_cache.get("ts", 0)
+    # If in-memory is empty (cold start / new container), read ts from Redis
+    if not g_ts or not e_ts:
+        try:
+            saved = _redis_get()
+            if saved:
+                if not g_ts and saved.get("grounding", {}).get("ts"):
+                    g_ts = saved["grounding"]["ts"]
+                if not e_ts and saved.get("extended", {}).get("ts"):
+                    e_ts = saved["extended"]["ts"]
+        except Exception:
+            pass
     return {
         "grounding_age_seconds": int(now - g_ts) if g_ts else None,
-        "extended_age_seconds": int(now - e_ts) if e_ts else None,
+        "extended_age_seconds":  int(now - e_ts) if e_ts else None,
     }
