@@ -102,16 +102,28 @@ _CACHE_FILE = os.path.join(
 
 
 def _redis_get():
-    """Fetch cache from Upstash Redis. Returns parsed dict or None."""
+    """Fetch cache from Upstash Redis. Returns parsed dict or None.
+
+    Uses Upstash's body-array command format: POST to the bare REST_URL with
+    a JSON array body like ["GET", key] -- this is the format Upstash's own
+    docs recommend for any command whose argument could contain special
+    characters, since path-based commands (REST_URL/get/key) have to be
+    careful about URL-encoding and have practical length limits."""
     if not _REDIS_URL or not _REDIS_TOKEN:
         return None
     try:
         import urllib.request
+        body = json.dumps(["GET", _REDIS_KEY]).encode()
         req = urllib.request.Request(
-            f"{_REDIS_URL}/get/{_REDIS_KEY}",
-            headers={"Authorization": f"Bearer {_REDIS_TOKEN}"}
+            _REDIS_URL,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {_REDIS_TOKEN}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
         )
-        with urllib.request.urlopen(req, timeout=3) as r:
+        with urllib.request.urlopen(req, timeout=5) as r:
             result = json.loads(r.read())
         if result.get("result"):
             return json.loads(result["result"])
@@ -121,24 +133,38 @@ def _redis_get():
 
 
 def _redis_set(data):
-    """Save cache to Upstash Redis with 25-hour TTL. Best-effort."""
+    """Save cache to Upstash Redis with 25-hour TTL. Best-effort.
+
+    IMPORTANT: this previously built the request as
+        f"{_REDIS_URL}/set/{_REDIS_KEY}/ex/90000"
+    with the JSON payload only in the request body. That's wrong for
+    Upstash's path-style command format -- path-style commands expect the
+    VALUE itself to be part of the path (REST_URL/set/key/value), so "ex" and
+    "90000" were being parsed as extra command arguments with no value ever
+    provided, which is exactly the "400 Bad Request" we were seeing in
+    production logs. Switched to Upstash's recommended body-array format:
+    POST a JSON array ["SET", key, value, "EX", ttl_seconds] to the bare
+    REST_URL. This also sidesteps any URL length/encoding limits on the
+    (potentially large) JSON blob we're storing as the value."""
     if not _REDIS_URL or not _REDIS_TOKEN:
         return
     try:
         import urllib.request
-        payload = json.dumps(data).encode()
-        # SET key value EX 90000 (25 hours)
+        value_str = json.dumps(data)
+        body = json.dumps(["SET", _REDIS_KEY, value_str, "EX", 90000]).encode()
         req = urllib.request.Request(
-            f"{_REDIS_URL}/set/{_REDIS_KEY}/ex/90000",
-            data=payload,
+            _REDIS_URL,
+            data=body,
             headers={
                 "Authorization": f"Bearer {_REDIS_TOKEN}",
-                "Content-Type": "application/json"
+                "Content-Type": "application/json",
             },
-            method="POST"
+            method="POST",
         )
-        with urllib.request.urlopen(req, timeout=3) as r:
-            pass
+        with urllib.request.urlopen(req, timeout=5) as r:
+            result = json.loads(r.read())
+        if result.get("error"):
+            print(f"⚠️  Redis SET returned error: {result['error']}")
     except Exception as e:
         print(f"⚠️  Redis SET failed: {e}")
 
