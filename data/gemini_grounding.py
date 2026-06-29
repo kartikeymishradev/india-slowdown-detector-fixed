@@ -65,6 +65,7 @@ import os
 import json
 import time
 import re
+import tempfile
 import traceback
 
 CACHE_TTL_SECONDS = 6 * 60 * 60        # 6 hours — normal "data still fresh" window
@@ -80,14 +81,15 @@ _cache = {"data": None, "ts": 0, "last_attempt": 0}
 # On Vercel (serverless) the in-memory dicts above can be wiped between
 # invocations whenever a cold start spins up a fresh container. To make the
 # "last refreshed X minutes ago" badge and the manual-refresh-only behavior
-# actually reliable, we ALSO persist the cached grounding data to a JSON file
-# on disk (Vercel's /tmp is writable and tends to survive across warm
-# invocations of the same container, though not guaranteed forever).
+# actually reliable, we ALSO persist the cached grounding data — primarily to
+# Upstash Redis (works on Vercel), with a local disk file as a secondary
+# fallback for local dev or if Redis env vars aren't configured.
 #
-# This is a best-effort durability layer, not a database — if the file is
-# missing or unreadable for any reason, we just fall back to the in-memory
-# state (which itself may be None on a true cold start), and the caller's
-# existing config.json fallback kicks in as the final safety net.
+# This is a best-effort durability layer, not a database — if Redis is
+# unavailable for any reason, we fall back to disk, and if that's also
+# unavailable we fall back to the in-memory state (which may be None on a
+# true cold start), and the caller's existing config.json fallback kicks in
+# as the final safety net.
 
 # ── Upstash Redis cache (Vercel-persistent) ──────────────────────────────────
 # Falls back to disk cache if Redis env vars not set (local dev).
@@ -96,8 +98,16 @@ _REDIS_URL   = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_RE
 _REDIS_TOKEN = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
 _REDIS_KEY   = "grounding_cache_v1"
 
+# IMPORTANT: use tempfile.gettempdir() rather than a hardcoded path or a path
+# relative to this file's directory. Vercel's deployed function filesystem is
+# READ-ONLY except for the system temp directory -- writing anywhere under
+# the project folder (e.g. "<project>/tmp") will raise a "Read-only file
+# system" error in production. tempfile.gettempdir() resolves correctly on
+# both Windows (local dev) and Linux (Vercel) without needing an OS check.
+# This disk path is only ever used as a fallback if Redis isn't configured,
+# but it still needs to not crash on Vercel if it's ever reached.
 _CACHE_FILE = os.path.join(
-    os.environ.get("GROUNDING_CACHE_DIR", os.path.join(os.path.dirname(__file__), "..", "tmp")), "grounding_cache.json"
+    os.environ.get("GROUNDING_CACHE_DIR", tempfile.gettempdir()), "grounding_cache.json"
 )
 
 
