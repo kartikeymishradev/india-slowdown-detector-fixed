@@ -364,6 +364,20 @@ body {
 .stat-row b { color: var(--text); }
 
 /* ════════════════════════════════════════════
+   FOUNDATION SCORE
+════════════════════════════════════════════ */
+.foundation-wrap { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
+.foundation-summary { flex: 0 0 220px; }
+.foundation-num { font-family: var(--font-mono); font-size: 26px; font-weight: 800; color: var(--text); }
+.foundation-sub { font-size: 12px; color: var(--muted); margin: 4px 0 10px; }
+.foundation-note { font-size: 11px; color: var(--muted); line-height: 1.5; }
+.foundation-list { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: 0; border-top: 1px solid var(--border); }
+.foundation-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.foundation-row-label { color: var(--text); }
+.foundation-row-val { font-family: var(--font-mono); font-weight: 700; color: var(--red); }
+.foundation-empty { font-size: 12px; color: var(--muted); padding: 8px 0; }
+
+/* ════════════════════════════════════════════
    SECTOR GRID
 ════════════════════════════════════════════ */
 .sector-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }

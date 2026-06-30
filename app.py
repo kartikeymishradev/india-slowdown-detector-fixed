@@ -95,6 +95,67 @@ def compute_risk_score(data):
     return min(100, max(0, round(score)))
 
 
+# Thresholds calibrated from training_data_v2.csv (52 quarters, FY2013-FY2025)
+# distribution — same indicators the ML model trains on, so this score and the
+# ML model's "Slowdown probability" are always computed from the same 18
+# features and can never silently disagree about what data they saw.
+FOUNDATION_THRESHOLDS = [
+    # (label, getter, is_red_fn)
+    ("GDP growth",            lambda d: d.get("gdp_growth"),        lambda v: v < 5.0),
+    ("CPI inflation",         lambda d: d.get("cpi"),               lambda v: v > 6.0),
+    ("Unemployment",          lambda d: d.get("unemployment"),      lambda v: v > 7.0),
+    ("Export growth",         lambda d: d.get("export_growth"),     lambda v: v < 0),
+    ("Repo rate",             lambda d: d.get("repo_rate"),         lambda v: v > 7.0),
+    ("PMI (manufacturing)",   lambda d: d.get("pmi"),               lambda v: v < 50),
+    ("WPI inflation",         lambda d: _ds_val(d, "supply", "wpi_inflation"),         lambda v: v > 6.0),
+    ("Core sector growth",    lambda d: _ds_val(d, "supply", "core_sector_growth"),    lambda v: v < 2.0),
+    ("Capacity utilization",  lambda d: _ds_val(d, "supply", "capacity_util"),         lambda v: v < 72),
+    ("Corporate earnings",    lambda d: _ds_val(d, "supply", "corporate_earnings"),    lambda v: v < 5.0),
+    ("Private consumption",   lambda d: _ds_val(d, "demand", "pfce_growth"),           lambda v: v < 5.0),
+    ("INR/USD",               lambda d: d.get("inr_usd"),           lambda v: v > 88),
+]
+
+
+def _ds_val(data, side, key):
+    """Pull a value out of indicators['demand_supply'][side][key]['value']."""
+    return data.get("demand_supply", {}).get(side, {}).get(key, {}).get("value")
+
+
+def compute_foundation_score(data):
+    """Transparent 'how many of the model's own 18 indicators are currently
+    in a red/weak zone' score, 0-100. Unlike compute_risk_score() (the old
+    hand-tuned 6-indicator formula) and the ML model (a black-box ensemble),
+    this score is deliberately simple and explainable: every point comes
+    from a named indicator crossing a named threshold, so the dashboard can
+    say exactly *why* the number is what it is, rather than just showing it.
+
+    It deliberately reuses the SAME 12 raw indicators the ML model trains
+    on (see build_feature_vector() / training_data_v2.csv) so this and the
+    ML model's "Slowdown probability" never disagree about which data they
+    looked at -- only about how they weigh it."""
+    red_zone = []
+    checked = 0
+
+    for label, getter, is_red in FOUNDATION_THRESHOLDS:
+        val = getter(data)
+        if val is None:
+            continue  # missing data point -- skip rather than guess
+        checked += 1
+        if is_red(val):
+            red_zone.append({"label": label, "value": val})
+
+    if checked == 0:
+        return {"score": None, "red_zone": [], "checked": 0, "total": len(FOUNDATION_THRESHOLDS)}
+
+    score = round((len(red_zone) / checked) * 100)
+    return {
+        "score": score,
+        "red_zone": red_zone,
+        "checked": checked,
+        "total": len(FOUNDATION_THRESHOLDS),
+    }
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -111,7 +172,6 @@ def api_indicators():
 def api_predict():
     """Run ML model on current indicators."""
     data = get_all_indicators()
-    risk_score = compute_risk_score(data)
 
     prediction = {"label": "Warning", "confidence": 0.5, "probabilities": {}}
 
@@ -129,8 +189,13 @@ def api_predict():
                 "Slowdown": round(float(proba[2]) * 100, 1),
             }
         }
+        # risk_score IS the ML model's own Slowdown probability -- single
+        # source of truth, so the gauge and the Stable/Warning/Slowdown
+        # label can never visually disagree with each other again.
+        risk_score = round(prediction["probabilities"]["Slowdown"])
     else:
-        # Rule-based fallback if model not trained yet
+        # Rule-based fallback ONLY used if model.pkl failed to load.
+        risk_score = compute_risk_score(data)
         if risk_score < 35:
             prediction = {"label": "Stable", "color": "green", "confidence": 72.0,
                           "probabilities": {"Stable": 72.0, "Warning": 22.0, "Slowdown": 6.0}}
@@ -144,6 +209,7 @@ def api_predict():
     return jsonify({
         "prediction": prediction,
         "risk_score": risk_score,
+        "foundation_score": compute_foundation_score(data),
         "indicators": data,
         "model_loaded": model is not None,
         "grounding_status": get_grounding_status(),

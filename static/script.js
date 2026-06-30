@@ -185,6 +185,38 @@ function buildPrediction(pred) {
   ).join('');
 }
 
+// Foundation Score -- transparent "how many of the model's own indicators are
+// currently weak" snapshot. Comes from app.py's compute_foundation_score(),
+// which reuses the exact same 12 raw indicators the ML model trains on, so
+// this card and the ML Model Prediction card above can never quietly
+// disagree about what data they looked at.
+function buildFoundation(fs) {
+  const numEl = document.getElementById('foundation-num');
+  const subEl = document.getElementById('foundation-sub');
+  const listEl = document.getElementById('foundation-list');
+  if (!fs || fs.score == null) {
+    numEl.textContent = '—';
+    subEl.textContent = 'Not enough data yet';
+    listEl.innerHTML = '';
+    return;
+  }
+  const color = fs.score < 25 ? '#16A34A' : fs.score < 55 ? '#D97706' : '#DC2626';
+  numEl.textContent = fs.score + '/100';
+  numEl.style.color = color;
+  subEl.textContent = `${fs.red_zone.length} of ${fs.checked} indicators in red zone`;
+
+  if (fs.red_zone.length === 0) {
+    listEl.innerHTML = '<div class="foundation-empty">No indicators currently past their weak-zone threshold.</div>';
+    return;
+  }
+  listEl.innerHTML = fs.red_zone.map(item =>
+    `<div class="foundation-row">
+      <span class="foundation-row-label">${item.label}</span>
+      <span class="foundation-row-val">${item.value}</span>
+    </div>`
+  ).join('');
+}
+
 function secStatus(s) {
   if (s.higher_good) return s.value >= s.avg ? 'good' : s.value > s.threshold ? 'warn' : 'bad';
   return s.value <= s.avg ? 'good' : s.value < s.threshold ? 'warn' : 'bad';
@@ -466,6 +498,7 @@ async function refreshAll() {
   setMacro(data);
   buildGauge(data.risk_score);
   buildPrediction(data.prediction);
+  buildFoundation(data.foundation_score);
   buildSectors(sectors);
   buildTrend(sectors[selectedSec]);
   buildHF(sectors);
