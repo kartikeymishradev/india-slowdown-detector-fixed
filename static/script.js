@@ -26,7 +26,7 @@ function mLabel(off) {
 }
 const TLABELS = Array.from({length:12},(_,i)=>mLabel(i-11));
 
-let trendChart=null, gaugeChart=null, featChart=null, histChart=null;
+let trendChart=null, gaugeChart=null, featChart=null, histChart=null, modalFeatChart=null;
 let selectedSec = 'manufacturing';
 const SEC_KEYS = ['manufacturing','banking','agriculture','trade','employment'];
 const SEC_ICONS = {
@@ -59,8 +59,8 @@ const HIST_DATA = {
   unemp:   [8.2, 8.0, 9.4, 13.2, 8.0, 7.8, 7.7, 8.1],
 };
 
-async function apiFetch(url) {
-  try { const r = await fetch(url); if(!r.ok) throw new Error(); return await r.json(); }
+async function apiFetch(url, options) {
+  try { const r = await fetch(url, options); if(!r.ok) throw new Error(); return await r.json(); }
   catch { return null; }
 }
 
@@ -200,10 +200,14 @@ function buildFoundation(fs) {
     listEl.innerHTML = '';
     return;
   }
-  const color = fs.score < 25 ? '#16A34A' : fs.score < 55 ? '#D97706' : '#DC2626';
-  numEl.textContent = fs.score + '/100';
+  // Fraction format (e.g. "4/12") instead of a second "/100" score --
+  // the ML Model card above already owns the 0-100 risk scale, and having
+  // two differently-scaled "scores" on the same screen was confusing.
+  const ratio = fs.checked ? fs.red_zone.length / fs.checked : 0;
+  const color = ratio < 0.25 ? '#16A34A' : ratio < 0.55 ? '#D97706' : '#DC2626';
+  numEl.textContent = `${fs.red_zone.length}/${fs.checked}`;
   numEl.style.color = color;
-  subEl.textContent = `${fs.red_zone.length} of ${fs.checked} indicators in red zone`;
+  subEl.textContent = 'Warning Signs';
 
   if (fs.red_zone.length === 0) {
     listEl.innerHTML = '<div class="foundation-empty">No indicators currently past their weak-zone threshold.</div>';
@@ -217,9 +221,99 @@ function buildFoundation(fs) {
   ).join('');
 }
 
+// ═══════════════════════════════════════════
+//  INTERACTIVE THRESHOLD ADJUSTMENTS (sandbox)
+// ═══════════════════════════════════════════
+// Lets the user drag each Foundation Score threshold and see the red-zone
+// count recompute -- via the REAL backend (/api/foundation-score/recompute),
+// not a client-side guess, so it can never silently drift from
+// compute_foundation_score() in app.py.
+let THRESHOLD_DEFS = [];
+let currentOverrides = {};
+
+async function loadThresholdDefs() {
+  if (THRESHOLD_DEFS.length) return THRESHOLD_DEFS;
+  const defs = await apiFetch('/api/foundation-thresholds');
+  THRESHOLD_DEFS = defs || [];
+  return THRESHOLD_DEFS;
+}
+
+function toggleThresholdPanel() {
+  const panel = document.getElementById('threshold-panel');
+  const btn = document.getElementById('threshold-toggle-btn');
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? 'block' : 'none';
+  btn.classList.toggle('active', opening);
+  if (opening) renderThresholdSliders();
+}
+
+async function renderThresholdSliders() {
+  const wrap = document.getElementById('threshold-sliders');
+  const defs = await loadThresholdDefs();
+  if (!defs.length) { wrap.innerHTML = '<div class="foundation-empty">Could not load threshold settings.</div>'; return; }
+  wrap.innerHTML = defs.map(t => {
+    const val = currentOverrides[t.key] != null ? currentOverrides[t.key] : t.default;
+    const dirty = currentOverrides[t.key] != null && currentOverrides[t.key] !== t.default;
+    return `
+      <div class="threshold-slider-item${dirty ? ' dirty' : ''}" id="ts-item-${cssId(t.key)}">
+        <div class="threshold-slider-top">
+          <span class="threshold-slider-label">${t.label}</span>
+          <span class="threshold-slider-val" id="ts-val-${cssId(t.key)}">${t.direction === 'gt' ? '>' : '<'} ${val}${t.unit}</span>
+        </div>
+        <input type="range" min="${t.min}" max="${t.max}" step="${t.step}" value="${val}"
+          oninput="onThresholdInput('${t.key}', this.value, '${t.direction}', '${t.unit}')"
+          onchange="onThresholdChange('${t.key}', this.value)">
+      </div>`;
+  }).join('');
+}
+
+function cssId(key) { return key.replace(/[^a-zA-Z0-9]/g, '_'); }
+
+function onThresholdInput(key, value, direction, unit) {
+  // Cheap: just update the visible number while dragging. No network call.
+  document.getElementById(`ts-val-${cssId(key)}`).textContent = `${direction === 'gt' ? '>' : '<'} ${value}${unit}`;
+  document.getElementById(`ts-item-${cssId(key)}`).classList.add('dirty');
+}
+
+async function onThresholdChange(key, value) {
+  // Fires when the user releases the slider -- ask the real backend to
+  // recompute the Foundation Score under this custom threshold.
+  currentOverrides[key] = parseFloat(value);
+  const listEl = document.getElementById('foundation-list');
+  listEl.style.opacity = '0.5';
+  try {
+    const fs = await apiFetch('/api/foundation-score/recompute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ overrides: currentOverrides })
+    });
+    if (fs) buildFoundation(fs);
+  } finally {
+    listEl.style.opacity = '1';
+  }
+}
+
+async function resetThresholds() {
+  currentOverrides = {};
+  await renderThresholdSliders();
+  // Restore the official score from whatever we last loaded.
+  if (window._cachedData) buildFoundation(window._cachedData.foundation_score);
+}
+
 function secStatus(s) {
-  if (s.higher_good) return s.value >= s.avg ? 'good' : s.value > s.threshold ? 'warn' : 'bad';
-  return s.value <= s.avg ? 'good' : s.value < s.threshold ? 'warn' : 'bad';
+  // Indicators like PMI have a well-known "expansion vs contraction" line
+  // (50) that matters more than being slightly below the 12-month average.
+  // For those, set warn_below_avg:false so a value on the healthy side of
+  // the threshold reads as "Healthy" instead of being downgraded to
+  // "Watch" just for sitting under the average.
+  if (s.higher_good) {
+    if (s.value >= s.avg) return 'good';
+    if (s.warn_below_avg === false) return s.value > s.threshold ? 'good' : 'bad';
+    return s.value > s.threshold ? 'warn' : 'bad';
+  }
+  if (s.value <= s.avg) return 'good';
+  if (s.warn_below_avg === false) return s.value < s.threshold ? 'good' : 'bad';
+  return s.value < s.threshold ? 'warn' : 'bad';
 }
 
 function buildSectors(sectors) {
@@ -362,11 +456,15 @@ function buildExtra(ext, derived, extendedAgeSeconds) {
     </div>`).join('');
 }
 
-function buildFeat() {
-  const ctx = document.getElementById('featChart').getContext('2d');
-  if (featChart) featChart.destroy();
+function buildFeat(canvasId) {
+  canvasId = canvasId || 'featChart';
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const isModal = canvasId === 'modalFeatChart';
+  if (isModal) { if (modalFeatChart) modalFeatChart.destroy(); } else { if (featChart) featChart.destroy(); }
   const sorted = Object.entries(FEAT_IMP).sort((a,b)=>b[1]-a[1]);
-  featChart = new Chart(ctx, {
+  const chart = new Chart(ctx, {
     type:'bar',
     data:{ labels:sorted.map(e=>e[0]), datasets:[{
       data: sorted.map(e=>+(e[1]*100).toFixed(1)),
@@ -379,7 +477,23 @@ function buildFeat() {
       plugins:{legend:{display:false}}
     }
   });
+  if (isModal) modalFeatChart = chart; else featChart = chart;
 }
+
+// ═══════════════════════════════════════════
+//  MODEL METHODOLOGY DRILL-DOWN (modal)
+// ═══════════════════════════════════════════
+function openModelModal() {
+  document.getElementById('model-modal-overlay').style.display = 'flex';
+  // Build lazily -- only render the chart once the modal is actually visible.
+  buildFeat('modalFeatChart');
+  document.addEventListener('keydown', _modalEscHandler);
+}
+function closeModelModal() {
+  document.getElementById('model-modal-overlay').style.display = 'none';
+  document.removeEventListener('keydown', _modalEscHandler);
+}
+function _modalEscHandler(e) { if (e.key === 'Escape') closeModelModal(); }
 
 function buildHist() {
   const ctx = document.getElementById('histChart').getContext('2d');
@@ -515,6 +629,153 @@ document.getElementById("loader").style.display = "none";
 }
 
 refreshAll();
+
+// ═══════════════════════════════════════════
+//  HISTORICAL SHOCK OVERLAY
+// ═══════════════════════════════════════════
+// Compares today's live numbers against what the SAME trained model output
+// for two real historical quarters, pulled from /api/shock-scenario/<key>
+// (which reads straight out of training_data_v2.csv and runs model.pkl on
+// it server-side -- this is real model inference, not a canned demo value).
+const SHOCK_KEYS = ['live', 'slowdown_2019', 'covid_2020'];
+
+function setActiveShockBtn(key) {
+  SHOCK_KEYS.forEach(k => {
+    const btn = document.getElementById(`shock-btn-${k}`);
+    if (btn) btn.classList.toggle('active', k === key);
+  });
+}
+
+async function loadShock(key) {
+  setActiveShockBtn(key);
+  const body = document.getElementById('shock-body');
+
+  if (key === 'live') {
+    body.innerHTML = '<div class="shock-placeholder" id="shock-placeholder">Pick a period above to compare it against today.</div>';
+    return;
+  }
+
+  body.innerHTML = '<div class="shock-loading">Running the model on that quarter…</div>';
+
+  const scenario = await apiFetch(`/api/shock-scenario/${key}`);
+  const today = window._cachedData;
+  if (!scenario || scenario.error || !today) {
+    body.innerHTML = '<div class="shock-placeholder">Could not load that historical scenario. Check that the Flask server is running.</div>';
+    return;
+  }
+
+  const t = today.indicators;
+  const todayRow = {
+    label: 'Today (Live)', period: 'Current', score: today.risk_score,
+    predLabel: today.prediction.label,
+    gdp_growth: t.gdp_growth, cpi: t.cpi, pmi: t.pmi, export_growth: t.export_growth, repo_rate: t.repo_rate
+  };
+  const shockRow = {
+    label: scenario.label, period: scenario.period, score: scenario.risk_score,
+    predLabel: scenario.prediction ? scenario.prediction.label : '—',
+    gdp_growth: scenario.indicators.gdp_growth, cpi: scenario.indicators.cpi, pmi: scenario.indicators.pmi,
+    export_growth: scenario.indicators.export_growth, repo_rate: scenario.indicators.repo_rate
+  };
+
+  const rows = [
+    { label: 'GDP Growth',    key: 'gdp_growth',    unit: '%', lowerIsWorse: true },
+    { label: 'Manufacturing PMI', key: 'pmi',        unit: '',  lowerIsWorse: true },
+    { label: 'CPI Inflation', key: 'cpi',            unit: '%', lowerIsWorse: false },
+    { label: 'Export Growth', key: 'export_growth',  unit: '%', lowerIsWorse: true },
+    { label: 'Repo Rate',     key: 'repo_rate',      unit: '%', lowerIsWorse: false },
+  ];
+
+  const tableRows = rows.map(r => {
+    const a = todayRow[r.key], b = shockRow[r.key];
+    const delta = b - a;
+    const shockIsWorse = r.lowerIsWorse ? delta < 0 : delta > 0;
+    const deltaClass = delta === 0 ? '' : (shockIsWorse ? 'shock-delta-worse' : 'shock-delta-better');
+    const deltaTxt = (delta > 0 ? '+' : '') + delta.toFixed(1) + r.unit;
+    return `<tr>
+      <td>${r.label}</td>
+      <td>${a}${r.unit}</td>
+      <td>${b}${r.unit}</td>
+      <td class="${deltaClass}">${deltaTxt}</td>
+    </tr>`;
+  }).join('');
+
+  const scoreColor = s => s == null ? 'var(--muted)' : s < 30 ? 'var(--green)' : s < 60 ? 'var(--amber)' : 'var(--red)';
+
+  body.innerHTML = `
+    <div class="shock-compare-grid">
+      <div class="shock-panel">
+        <div class="shock-panel-title">${todayRow.label}</div>
+        <div class="shock-panel-period">${todayRow.period}</div>
+        <div class="shock-panel-score" style="color:${scoreColor(todayRow.score)}">${todayRow.score}/100</div>
+        <div class="shock-panel-label" style="color:${scoreColor(todayRow.score)}">${todayRow.predLabel}</div>
+      </div>
+      <div class="shock-panel is-shock">
+        <div class="shock-panel-title">${shockRow.label}</div>
+        <div class="shock-panel-period">${shockRow.period}</div>
+        <div class="shock-panel-score" style="color:${scoreColor(shockRow.score)}">${shockRow.score != null ? shockRow.score + '/100' : '—'}</div>
+        <div class="shock-panel-label" style="color:${scoreColor(shockRow.score)}">${shockRow.predLabel}</div>
+      </div>
+    </div>
+    <table class="shock-table">
+      <thead><tr><th>Indicator</th><th>Today</th><th>${scenario.label}</th><th>Δ</th></tr></thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+    <div class="shock-footnote">Historical figures are pulled directly from the same 52-quarter training_data_v2.csv the model was fit on (real quarter: ${scenario.quarter}, originally labeled "${scenario.dataset_label}"). The model's Warning/Slowdown output above is real inference run against that quarter, not a hand-picked demo number.</div>
+  `;
+}
+
+// ═══════════════════════════════════════════
+//  AUTOMATED EXPORT & REPORTING
+// ═══════════════════════════════════════════
+function flattenIndicators(obj, prefix, out) {
+  out = out || {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+      flattenIndicators(v, key, out);
+    } else if (!Array.isArray(v)) {
+      out[key] = v;
+    }
+  }
+  return out;
+}
+
+function csvEscape(val) {
+  const s = String(val ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportCSV() {
+  const data = window._cachedData;
+  if (!data) { alert('Dashboard data is still loading — try again in a moment.'); return; }
+  const flat = flattenIndicators(data.indicators);
+  flat['risk_score'] = data.risk_score;
+  flat['prediction_label'] = data.prediction?.label;
+  flat['foundation_score_red_zone_count'] = data.foundation_score?.red_zone?.length;
+  flat['foundation_score_checked'] = data.foundation_score?.checked;
+
+  const rows = [['indicator', 'value'], ...Object.entries(flat)];
+  const csv = rows.map(r => r.map(csvEscape).join(',')).join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `arthasanket-indicators-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportReport() {
+  // Uses the browser's native print dialog (choose "Save as PDF" as the
+  // destination) rather than bundling a PDF-generation library client-side --
+  // the print stylesheet (@media print in style.css) hides the sidebar/nav
+  // chrome so what prints is a clean report of the current dashboard state.
+  window.print();
+}
 
 // ═══════════════════════════════════════════
 //  AI-GROUNDED DATA REFRESH (manual button + background timer)

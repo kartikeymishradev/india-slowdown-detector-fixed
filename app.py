@@ -8,6 +8,7 @@ import sys
 import json
 import joblib
 import numpy as np
+import pandas as pd
 from flask import Flask, jsonify, render_template, request
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -99,21 +100,39 @@ def compute_risk_score(data):
 # distribution — same indicators the ML model trains on, so this score and the
 # ML model's "Slowdown probability" are always computed from the same 18
 # features and can never silently disagree about what data they saw.
+#
+# Structured as dicts (rather than bare lambdas) so the /api/foundation-thresholds
+# route can hand this same definition to the frontend, which lets the user drag
+# sliders to explore "what if the red-zone line were here instead" without the
+# frontend needing to hardcode a second copy of these numbers.
+#   key:       dotted lookup used by _get_by_key() -- "ds:<side>:<field>" for a
+#              demand_supply value, otherwise a flat top-level indicator field.
+#   direction: "gt" -> flagged red when value is ABOVE the threshold
+#              "lt" -> flagged red when value is BELOW the threshold
 FOUNDATION_THRESHOLDS = [
-    # (label, getter, is_red_fn)
-    ("GDP growth",            lambda d: d.get("gdp_growth"),        lambda v: v < 5.0),
-    ("CPI inflation",         lambda d: d.get("cpi"),               lambda v: v > 6.0),
-    ("Unemployment",          lambda d: d.get("unemployment"),      lambda v: v > 7.0),
-    ("Export growth",         lambda d: d.get("export_growth"),     lambda v: v < 0),
-    ("Repo rate",             lambda d: d.get("repo_rate"),         lambda v: v > 7.0),
-    ("PMI (manufacturing)",   lambda d: d.get("pmi"),               lambda v: v < 50),
-    ("WPI inflation",         lambda d: _ds_val(d, "supply", "wpi_inflation"),         lambda v: v > 6.0),
-    ("Core sector growth",    lambda d: _ds_val(d, "supply", "core_sector_growth"),    lambda v: v < 2.0),
-    ("Capacity utilization",  lambda d: _ds_val(d, "supply", "capacity_util"),         lambda v: v < 72),
-    ("Corporate earnings",    lambda d: _ds_val(d, "supply", "corporate_earnings"),    lambda v: v < 5.0),
-    ("Private consumption",   lambda d: _ds_val(d, "demand", "pfce_growth"),           lambda v: v < 5.0),
-    ("INR/USD",               lambda d: d.get("inr_usd"),           lambda v: v > 88),
+    {"key": "gdp_growth",                    "label": "GDP growth",           "direction": "lt", "default": 5.0,  "unit": "%", "min": 0,   "max": 10, "step": 0.1},
+    {"key": "cpi",                           "label": "CPI inflation",        "direction": "gt", "default": 6.0,  "unit": "%", "min": 2,   "max": 12, "step": 0.1},
+    {"key": "unemployment",                  "label": "Unemployment",         "direction": "gt", "default": 7.0,  "unit": "%", "min": 3,   "max": 15, "step": 0.1},
+    {"key": "export_growth",                 "label": "Export growth",        "direction": "lt", "default": 0.0,  "unit": "%", "min": -20, "max": 20, "step": 0.5},
+    {"key": "repo_rate",                     "label": "Repo rate",            "direction": "gt", "default": 7.0,  "unit": "%", "min": 3,   "max": 10, "step": 0.25},
+    {"key": "pmi",                           "label": "PMI (manufacturing)",  "direction": "lt", "default": 50.0, "unit": "",  "min": 30,  "max": 65, "step": 0.5},
+    {"key": "ds:supply:wpi_inflation",       "label": "WPI inflation",        "direction": "gt", "default": 6.0,  "unit": "%", "min": 0,   "max": 15, "step": 0.1},
+    {"key": "ds:supply:core_sector_growth",  "label": "Core sector growth",   "direction": "lt", "default": 2.0,  "unit": "%", "min": -10, "max": 10, "step": 0.1},
+    {"key": "ds:supply:capacity_util",       "label": "Capacity utilization", "direction": "lt", "default": 72.0, "unit": "%", "min": 50,  "max": 90, "step": 0.5},
+    {"key": "ds:supply:corporate_earnings",  "label": "Corporate earnings",   "direction": "lt", "default": 5.0,  "unit": "%", "min": -15, "max": 20, "step": 0.5},
+    {"key": "ds:demand:pfce_growth",         "label": "Private consumption",  "direction": "lt", "default": 5.0,  "unit": "%", "min": -5,  "max": 15, "step": 0.5},
+    {"key": "inr_usd",                       "label": "INR/USD",              "direction": "gt", "default": 88.0, "unit": "",  "min": 70,  "max": 110,"step": 0.5},
 ]
+
+
+def _get_by_key(data, key):
+    """Look up an indicator value by its FOUNDATION_THRESHOLDS key.
+    'ds:<side>:<field>' reaches into demand_supply; anything else is a flat
+    top-level field on the indicators dict."""
+    if key.startswith("ds:"):
+        _, side, field = key.split(":", 2)
+        return _ds_val(data, side, field)
+    return data.get(key)
 
 
 def _ds_val(data, side, key):
@@ -121,7 +140,7 @@ def _ds_val(data, side, key):
     return data.get("demand_supply", {}).get(side, {}).get(key, {}).get("value")
 
 
-def compute_foundation_score(data):
+def compute_foundation_score(data, overrides=None):
     """Transparent 'how many of the model's own 18 indicators are currently
     in a red/weak zone' score, 0-100. Unlike compute_risk_score() (the old
     hand-tuned 6-indicator formula) and the ML model (a black-box ensemble),
@@ -132,17 +151,25 @@ def compute_foundation_score(data):
     It deliberately reuses the SAME 12 raw indicators the ML model trains
     on (see build_feature_vector() / training_data_v2.csv) so this and the
     ML model's "Slowdown probability" never disagree about which data they
-    looked at -- only about how they weigh it."""
+    looked at -- only about how they weigh it.
+
+    `overrides` (optional dict of {key: custom_threshold_value}) lets the
+    "Interactive Threshold Adjustments" sandbox on the frontend recompute
+    this score against user-chosen threshold lines instead of the defaults,
+    without ever touching the defaults themselves."""
+    overrides = overrides or {}
     red_zone = []
     checked = 0
 
-    for label, getter, is_red in FOUNDATION_THRESHOLDS:
-        val = getter(data)
+    for t in FOUNDATION_THRESHOLDS:
+        val = _get_by_key(data, t["key"])
         if val is None:
             continue  # missing data point -- skip rather than guess
         checked += 1
-        if is_red(val):
-            red_zone.append({"label": label, "value": val})
+        threshold = overrides.get(t["key"], t["default"])
+        is_red = (val > threshold) if t["direction"] == "gt" else (val < threshold)
+        if is_red:
+            red_zone.append({"label": t["label"], "value": val})
 
     if checked == 0:
         return {"score": None, "red_zone": [], "checked": 0, "total": len(FOUNDATION_THRESHOLDS)}
@@ -154,6 +181,38 @@ def compute_foundation_score(data):
         "checked": checked,
         "total": len(FOUNDATION_THRESHOLDS),
     }
+
+
+@app.route("/api/foundation-thresholds")
+def api_foundation_thresholds():
+    """Metadata (key/label/direction/default/range) for every Foundation
+    Score threshold, so the frontend can render sliders generically instead
+    of hardcoding a second copy of these numbers."""
+    return jsonify(FOUNDATION_THRESHOLDS)
+
+
+@app.route("/api/foundation-score/recompute", methods=["POST"])
+def api_foundation_recompute():
+    """Recompute the Foundation Score against user-chosen threshold lines
+    (the 'Interactive Threshold Adjustments' sandbox). Always recomputes
+    against the current live indicators -- this never changes what
+    FOUNDATION_THRESHOLDS' defaults are, it just answers 'what would the
+    count look like if the red-zone line were here instead'."""
+    payload = request.get_json(silent=True) or {}
+    overrides = payload.get("overrides") or {}
+    # Only accept overrides for known keys, and only numeric values --
+    # never trust the client's payload shape blindly.
+    valid_keys = {t["key"] for t in FOUNDATION_THRESHOLDS}
+    clean_overrides = {}
+    for k, v in overrides.items():
+        if k in valid_keys:
+            try:
+                clean_overrides[k] = float(v)
+            except (TypeError, ValueError):
+                continue
+
+    data = get_all_indicators()
+    return jsonify(compute_foundation_score(data, clean_overrides))
 
 
 @app.route("/")
@@ -214,6 +273,124 @@ def api_predict():
         "model_loaded": model is not None,
         "grounding_status": get_grounding_status(),
     })
+
+
+# Historical Shock Overlay -- lets the dashboard show what the REAL trained
+# model actually output for two real, well-documented Indian slowdown
+# episodes, pulled straight from the same training_data_v2.csv the model
+# was fit on (not hand-typed guesses). This is what validates the model:
+# feeding it a known-bad quarter and confirming it flags it as such.
+HISTORICAL_SHOCKS = {
+    "slowdown_2019": {
+        "quarter": "Q2_FY2020",
+        "label": "2019 Slowdown",
+        "period": "Jul–Sep 2019 (Q2 FY20)",
+    },
+    "covid_2020": {
+        "quarter": "Q1_FY2021",
+        "label": "COVID-19 Shock",
+        "period": "Apr–Jun 2020 (Q1 FY21)",
+    },
+}
+
+TRAINING_DATA_PATH = os.path.join(os.path.dirname(__file__), "model", "training_data_v2.csv")
+
+
+def _load_training_row(quarter):
+    """Pull one labeled quarter straight out of the model's own training set."""
+    try:
+        df = pd.read_csv(TRAINING_DATA_PATH)
+    except FileNotFoundError:
+        return None
+    match = df[df["quarter"] == quarter]
+    if match.empty:
+        return None
+    return match.iloc[0].to_dict()
+
+
+def _feature_vector_from_training_row(row):
+    """Same 18-column shape as build_feature_vector() in data/fetch_data.py,
+    built directly from a training_data_v2.csv row instead of live indicators."""
+    pmi = row["pmi_manufacturing"]
+    exp = row["exports_yoy"]
+    core_sector = row["core_sector_growth"]
+    cap_util = row["capacity_utilization"]
+    corp_earn = row["corporate_earnings_growth"]
+    return pd.DataFrame([{
+        "gdp_growth":                row["gdp_growth"],
+        "cpi_inflation":             row["cpi_inflation"],
+        "unemployment":              row["unemployment"],
+        "exports_yoy":               exp,
+        "repo_rate":                 row["repo_rate"],
+        "pmi_manufacturing":         pmi,
+        "wpi_inflation":             row["wpi_inflation"],
+        "core_sector_growth":        core_sector,
+        "capacity_utilization":      cap_util,
+        "corporate_earnings_growth": corp_earn,
+        "pfce_growth":               row["pfce_growth"],
+        "inr_usd":                   row["inr_usd"],
+        "pmi_below50":               int(pmi < 50),
+        "export_neg":                int(exp < 0),
+        "core_sector_weak":          int(core_sector < 2),
+        "cap_util_low":              int(cap_util < 72),
+        "gdp_momentum":              0.0,
+        "earnings_weak":             int(corp_earn < 5),
+    }])
+
+
+@app.route("/api/shock-scenario/<key>")
+def api_shock_scenario(key):
+    """Run the actual trained model against a real historical quarter
+    (e.g. the COVID-19 shock quarter) and return what it predicted then,
+    for the frontend's Historical Shock Overlay comparison."""
+    cfg = HISTORICAL_SHOCKS.get(key)
+    if not cfg:
+        return jsonify({"error": "Unknown scenario", "available": list(HISTORICAL_SHOCKS.keys())}), 404
+
+    row = _load_training_row(cfg["quarter"])
+    if row is None:
+        return jsonify({"error": f"Quarter {cfg['quarter']} not found in training data"}), 404
+
+    result = {
+        "key": key,
+        "quarter": cfg["quarter"],
+        "label": cfg["label"],
+        "period": cfg["period"],
+        "dataset_label": row.get("label"),  # the label this quarter was trained with
+        "indicators": {
+            "gdp_growth":    round(float(row["gdp_growth"]), 2),
+            "cpi":           round(float(row["cpi_inflation"]), 2),
+            "pmi":           round(float(row["pmi_manufacturing"]), 1),
+            "export_growth": round(float(row["exports_yoy"]), 1),
+            "repo_rate":     round(float(row["repo_rate"]), 2),
+            # NOTE: this is the model's own training feature, on a different
+            # scale/definition than the CMIE household-survey unemployment
+            # rate quoted in the press (which spiked to ~23.5% in Apr 2020) --
+            # kept distinctly labeled so the two are never confused.
+            "unemployment_feature": round(float(row["unemployment"]), 2),
+        },
+    }
+
+    if model is not None:
+        features = _feature_vector_from_training_row(row)
+        pred = model.predict(features)[0]
+        proba = model.predict_proba(features)[0]
+        probabilities = {
+            "Stable":   round(float(proba[0]) * 100, 1),
+            "Warning":  round(float(proba[1]) * 100, 1),
+            "Slowdown": round(float(proba[2]) * 100, 1),
+        }
+        result["prediction"] = {
+            "label": LABELS[int(pred)],
+            "confidence": round(float(max(proba)) * 100, 1),
+            "probabilities": probabilities,
+        }
+        result["risk_score"] = round(probabilities["Slowdown"])
+    else:
+        result["prediction"] = None
+        result["risk_score"] = None
+
+    return jsonify(result)
 
 
 @app.route("/api/refresh-grounding", methods=["POST"])

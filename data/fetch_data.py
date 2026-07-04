@@ -49,8 +49,25 @@ def fetch_inr_usd():
     return None
 
 
+_STALE_DATA_MAX_AGE_YEARS = 1  # a dataset whose latest row is older than this is treated
+                                # as unavailable rather than silently shown as "live"
+
+
 def fetch_cpi_india():
-    """CPI India from World Bank open dataset on GitHub."""
+    """CPI India from World Bank open dataset on GitHub.
+
+    IMPORTANT CAVEAT: this dataset's 'CPI' column is a FULL CALENDAR-YEAR
+    AVERAGE inflation rate, not a current monthly headline YoY figure, and
+    World Bank typically only has the prior full year available (e.g. only
+    up to 2024 partway through 2026). Treating that as "today's inflation"
+    is materially misleading -- it can differ by a percentage point or more
+    from the latest MOSPI monthly release, and mixes up "annual average" with
+    "current month" even when the number happens to look plausible.
+
+    We only return a value here if it's within _STALE_DATA_MAX_AGE_YEARS of
+    the current year; otherwise we return None so the caller falls back to
+    config.json's manually-curated, dated, MOSPI-sourced figure (or, better,
+    the Gemini-grounded monthly figure -- see get_all_indicators())."""
     try:
         url = "https://raw.githubusercontent.com/datasets/cpi/master/data/cpi.csv"
         r = requests.get(url, timeout=10)
@@ -59,14 +76,31 @@ def fetch_cpi_india():
             india = df[df['Country Code'] == 'IND'].sort_values('Year', ascending=False)
             if not india.empty:
                 latest = india.iloc[0]
-                return round(float(latest['CPI']), 2), int(latest['Year'])
+                year = int(latest['Year'])
+                if datetime.now().year - year > _STALE_DATA_MAX_AGE_YEARS:
+                    return None, None  # too stale to present as current data
+                return round(float(latest['CPI']), 2), year
     except Exception:
         pass
     return None, None
 
 
 def fetch_gdp_growth_india():
-    """GDP growth rate India from World Bank open dataset on GitHub."""
+    """GDP growth rate India from World Bank open dataset on GitHub.
+
+    IMPORTANT CAVEAT: this computes YoY % change on NOMINAL GDP in current
+    USD -- so it bakes in both inflation and INR/USD exchange-rate movement,
+    NOT the real GDP growth % that MOSPI/RBI/the press report as "GDP
+    growth". World Bank data also typically lags 2+ years. This is a
+    fundamentally different -- and usually quite different-looking --
+    number from the headline "Real GDP Growth YoY" figure, even though both
+    are percentages, so it should never be shown as if it were today's
+    official growth rate.
+
+    We only return a value here if it's within _STALE_DATA_MAX_AGE_YEARS of
+    the current year; otherwise we return None so the caller falls back to
+    config.json's manually-curated MOSPI figure (or, better, the
+    Gemini-grounded real-GDP figure -- see get_all_indicators())."""
     try:
         url = "https://raw.githubusercontent.com/datasets/gdp/master/data/gdp.csv"
         r = requests.get(url, timeout=10)
@@ -78,9 +112,12 @@ def fetch_gdp_growth_india():
                 india['growth'] = india['Value'].pct_change() * 100
                 india = india.dropna(subset=['growth'])
                 latest = india.sort_values('Year', ascending=False).iloc[0]
+                year = int(latest['Year'])
+                if datetime.now().year - year > _STALE_DATA_MAX_AGE_YEARS:
+                    return None, None  # too stale to present as current data
                 val = round(float(latest['growth']), 2)
                 if abs(val) < 30:
-                    return val, int(latest['Year'])
+                    return val, year
     except Exception:
         pass
     return None, None
@@ -197,6 +234,19 @@ def get_all_indicators():
         if "export_growth" in grounded and "Exports:data.gov.in" not in sources_live:
             exp_val = grounded["export_growth"]
             grounded_fields.append("export_growth")
+        # GDP growth & CPI: the World Bank fetches above are annual-average /
+        # nominal-USD figures that are frequently 1-3 YEARS stale (see the
+        # caveats on fetch_cpi_india/fetch_gdp_growth_india) — a Gemini-grounded
+        # MOSPI monthly/quarterly figure, when available, is a materially
+        # better and more current number and should take priority over them.
+        if "gdp_growth" in grounded:
+            gdp_val = grounded["gdp_growth"]
+            gdp_yr = grounded.get("gdp_growth_period", gdp_yr)
+            grounded_fields.append("gdp_growth")
+        if "cpi" in grounded:
+            cpi_val = grounded["cpi"]
+            cpi_yr = grounded.get("cpi_month", cpi_yr)
+            grounded_fields.append("cpi")
         if grounded_fields:
             sources_live.append(f"Gemini-grounded:{','.join(grounded_fields)}")
 
@@ -283,6 +333,11 @@ def get_all_indicators():
             "avg": 55.8,
             "threshold": 50.0,
             "higher_good": True,
+            # PMI has one economically meaningful line: 50 (expansion vs
+            # contraction). Being a bit under the 12-month average while
+            # still comfortably above 50 is normal, not a warning sign --
+            # so don't downgrade to "Watch" purely for that.
+            "warn_below_avg": False,
             "trend": pmi_trend,
             "hf": [
                 {"label": "New orders index",     "value": pmi_sub.get("new_orders",  "59.2")},
@@ -364,8 +419,10 @@ def get_all_indicators():
     )
 
     field_sources = {
-        "gdp_growth":    "live" if any("GDP" in s for s in sources_live) else "manual",
-        "cpi":           "live" if any("CPI" in s for s in sources_live) else "manual",
+        "gdp_growth":    "ai_grounded" if "gdp_growth" in grounded_fields
+                          else "live" if any("GDP" in s for s in sources_live) else "manual",
+        "cpi":           "ai_grounded" if "cpi" in grounded_fields
+                          else "live" if any("CPI" in s for s in sources_live) else "manual",
         "inr_usd":       "live" if any("INR" in s for s in sources_live) else "manual",
         "export_growth": "live" if "Exports:data.gov.in" in sources_live
                           else "ai_grounded" if "export_growth" in grounded_fields
@@ -379,7 +436,9 @@ def get_all_indicators():
 
     return {
         "gdp_growth":     gdp_val,
+        "gdp_growth_period": gdp_yr,   # e.g. "Q4 FY2025-26" (Gemini) or a WB year (int) or None
         "cpi":            cpi_val,
+        "cpi_month":      cpi_yr,      # e.g. "May 2026" (Gemini) or a WB year (int) or None
         "repo_rate":      repo_rate,
         "next_mpc_meeting": next_mpc,
         "inr_usd":        inr_usd,

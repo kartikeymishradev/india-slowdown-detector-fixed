@@ -213,7 +213,7 @@ def _load_disk_cache():
     # Try Redis first
     saved = _redis_get()
     if saved:
-        print("✅ Cache loaded from Redis")
+        print(" Cache loaded from Redis")
         _apply(_cache, saved.get("grounding"))
         _apply(_extended_cache, saved.get("extended"))
         return
@@ -225,7 +225,7 @@ def _load_disk_cache():
             saved = json.load(f)
         _apply(_cache, saved.get("grounding"))
         _apply(_extended_cache, saved.get("extended"))
-        print("✅ Cache loaded from disk")
+        print(" Cache loaded from disk")
     except Exception as e:
         print(f"⚠️  Could not load grounding cache from disk: {e}")
 
@@ -343,12 +343,22 @@ Fields to find (use the latest available figure, prefer official sources: RBI, M
 - repo_rate: RBI's current policy repo rate % as set by the Monetary Policy Committee (number)
 - next_mpc_meeting: dates of the next scheduled RBI MPC meeting (string, e.g. "5-7 Aug 2026")
 - export_growth: latest merchandise exports YoY growth % from Ministry of Commerce (number)
+- gdp_growth: the headline Real GDP Growth YoY % for the LATEST released quarter, taken
+  EXCLUSIVELY from MOSPI's official provisional/quarterly GDP estimate press release.
+  Do NOT return private bank (SBI Ecowrap, ICRA, Nomura, etc.) forecasts, IMF/World Bank
+  projections, nominal GDP, or GVA growth -- only MOSPI's official real GDP YoY figure.
+- gdp_growth_period: the quarter/period this GDP figure is for (string, e.g. "Q4 FY2025-26")
+- cpi: the latest MONTHLY headline (all-India, combined) CPI inflation YoY %, as released by
+  MOSPI's monthly CPI press release. Do NOT return an annual/calendar-year average, food
+  inflation (CFPI), core inflation, rural-only, or urban-only sub-indices -- only the single
+  latest month's headline combined CPI YoY number.
+- cpi_month: the month/year this CPI figure is for (string, e.g. "May 2026")
 - source_note: one short string naming the sources actually used
 
 Respond with strictly this JSON shape and nothing else:
-{"pmi": 0.0, "pmi_month": "", "credit_growth": 0.0, "unemployment": 0.0, "agri_gva": 0.0, "repo_rate": 0.0, "next_mpc_meeting": "", "export_growth": 0.0, "source_note": ""}
+{"pmi": 0.0, "pmi_month": "", "credit_growth": 0.0, "unemployment": 0.0, "agri_gva": 0.0, "repo_rate": 0.0, "next_mpc_meeting": "", "export_growth": 0.0, "gdp_growth": 0.0, "gdp_growth_period": "", "cpi": 0.0, "cpi_month": "", "source_note": ""}
 
-If you cannot find a confident value for a field, omit that key entirely rather than guessing."""
+If you cannot find a confident value for a field from an official source, omit that key entirely rather than guessing or substituting a sub-index/forecast."""
 
 
 def _extract_json(text):
@@ -408,7 +418,10 @@ def fetch_grounded_indicators(force=False):
         from google.genai import types
 
         def _request(api_key):
-            client = genai.Client(api_key=api_key)
+            # Explicit HTTP timeout so a slow Gemini call fails fast and
+            # returns a clean error instead of running past Vercel's
+            # serverless function timeout.
+            client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=12000))
             return client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=FIELDS_PROMPT,
@@ -442,6 +455,16 @@ def fetch_grounded_indicators(force=False):
                 clean["next_mpc_meeting"] = parsed["next_mpc_meeting"]
         if "export_growth" in parsed and -60 <= float(parsed["export_growth"]) <= 60:
             clean["export_growth"] = round(float(parsed["export_growth"]), 2)
+        # Real GDP growth YoY -- sanity band rules out nominal-USD or
+        # multi-year-stale figures being mistaken for the current quarter.
+        if "gdp_growth" in parsed and -10 <= float(parsed["gdp_growth"]) <= 15:
+            clean["gdp_growth"] = round(float(parsed["gdp_growth"]), 2)
+            clean["gdp_growth_period"] = parsed.get("gdp_growth_period", "")
+        # Headline monthly CPI YoY -- sanity band rules out an annual average
+        # or a sub-index (food/core) sneaking in under the wrong label.
+        if "cpi" in parsed and 0 <= float(parsed["cpi"]) <= 15:
+            clean["cpi"] = round(float(parsed["cpi"]), 2)
+            clean["cpi_month"] = parsed.get("cpi_month", "")
         clean["source_note"] = parsed.get("source_note", "Gemini + Google Search grounding")
         clean["fetched_at"] = time.strftime("%d %b %Y, %I:%M %p")
 
@@ -531,7 +554,7 @@ def fetch_extended_indicators(force=False):
         from google.genai import types
 
         def _request(api_key):
-            client = genai.Client(api_key=api_key)
+            client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=12000))
             return client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=EXTENDED_FIELDS_PROMPT,
@@ -656,7 +679,7 @@ Structure your answer as:
 Be specific to India's current economic context. Do not use markdown headers, just flowing paragraphs."""
 
         def _request(api_key):
-            client = genai.Client(api_key=api_key)
+            client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=12000))
             return client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,

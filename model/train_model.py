@@ -103,8 +103,8 @@ for feat, imp in feat_imp.items():
 out_dir = os.path.dirname(__file__) or '.'
 joblib.dump(pipeline, os.path.join(out_dir, 'model.pkl'))
 
-print(f"\n✅ Model saved → model/model.pkl")
-print(f"✅ Trained on {len(df)} quarters with {len(FEATURES)} features")
+print(f"\n Model saved → model/model.pkl")
+print(f" Trained on {len(df)} quarters with {len(FEATURES)} features")
 print("\nNew features vs v1:")
 print("  + core_sector_growth    (8-core industry index)")
 print("  + capacity_utilization  (RBI OBICUS)")
