@@ -1,6 +1,6 @@
 <div align="center">
 
-# 📈 ArthSpandan
+# ArthSpandan
 
 **AI-powered macroeconomic intelligence platform for tracking India's economic pulse and detecting early slowdown signals.**
 
@@ -10,28 +10,28 @@
 [![Chart.js](https://img.shields.io/badge/Chart.js-4.4-pink?style=flat-square)](https://chartjs.org)
 [![Vercel](https://img.shields.io/badge/Deployed-Vercel-black?style=flat-square\&logo=vercel)](https://vercel.com)
 
-**[🔗 Live Demo](https://arthspandan.vercel.app/)**  ·  **[📄 Research Paper](#)**  ·  **[📊 Training Data](model/training_data_v2.csv)**
+**[ Live Demo](https://arthspandan.vercel.app/)**  ·  **[ Research Paper](#)**  ·  **[ Training Data](model/training_data_v2.csv)**
 
 </div>
 
 ---
 
-## 🔍 What it does
+## What it does
 
 ArthSpandan combines **Machine Learning**, **macroeconomic intelligence**, and **high-frequency economic indicators** to detect early warning signs of an economic slowdown in India before they become visible in quarterly GDP releases.
 
 The platform continuously analyzes multiple sectors of the economy and produces an interpretable slowdown risk assessment supported by real-time macroeconomic data.
 | Sector               | Indicator                 | Source               |
 | -------------------- | ------------------------- | -------------------- |
-| 🏭 Manufacturing     | PMI (S&P Global)          | S&P Global / HSBC    |
-| 🏦 Banking & Finance | Credit Growth YoY         | RBI SCB Data         |
-| 🌾 Agriculture       | GVA Growth                | MOSPI                |
-| 🚢 Trade & Exports   | Merchandise Export Growth | Ministry of Commerce |
-| 👥 Employment        | Urban Unemployment Rate   | CMIE CPHS            |
+|  Manufacturing     | PMI (S&P Global)          | S&P Global / HSBC    |
+|  Banking & Finance | Credit Growth YoY         | RBI SCB Data         |
+|  Agriculture       | GVA Growth                | MOSPI                |
+|  Trade & Exports   | Merchandise Export Growth | Ministry of Commerce |
+|  Employment        | Urban Unemployment Rate   | CMIE CPHS            |
 
 ---
 
-## 🎯 Vision
+## Vision
 
 ArthSpandan aims to make India's macroeconomic intelligence accessible through explainable AI.
 
@@ -39,7 +39,7 @@ Instead of relying solely on lagging indicators like quarterly GDP, the platform
 
 ---
 
-## 🤖 ML Model
+## ML Model
 
 * **Algorithm:** Ensemble (Random Forest + Gradient Boosting, Soft Voting)
 * **Training Data:** 52 quarterly observations (FY2013 Q1 – FY2025 Q4)
@@ -51,7 +51,7 @@ Instead of relying solely on lagging indicators like quarterly GDP, the platform
 
 ---
 
-## 🚀 Run Locally
+## Run Locally
 
 ```bash
 # Clone repository
@@ -78,7 +78,7 @@ http://localhost:5000
 
 ---
 
-## ☁️ Deploy on Vercel
+##  Deploy on Vercel
 
 ### Push Repository
 
@@ -107,7 +107,7 @@ Every GitHub push automatically triggers a new deployment.
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```text
 arthspandan/
@@ -130,7 +130,7 @@ arthspandan/
 
 ---
 
-## 🔌 API Endpoints
+## API Endpoints
 
 | Method | Endpoint           | Description                |
 | ------ | ------------------ | -------------------------- |
@@ -142,7 +142,7 @@ arthspandan/
 
 ---
 
-## 📊 Features
+## Features
 
 - AI-powered macroeconomic slowdown prediction
 - Real-time economic indicator dashboard
@@ -155,7 +155,7 @@ arthspandan/
 
 ---
 
-## 📚 Research
+## Research
 
 **Paper Title**
 
@@ -171,7 +171,7 @@ March 2026
 
 ---
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 This project is intended for academic research and educational purposes. Predictions are generated using historical macroeconomic data and machine learning models and should not be interpreted as official economic forecasts or financial advice.
 
