@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🇮🇳 India Economic Slowdown Detector
+# 📈 ArthSpandan
 
-**AI-powered early warning system for economic slowdown detection**
+**AI-powered macroeconomic intelligence platform for tracking India's economic pulse and detecting early slowdown signals.**
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue?style=flat-square\&logo=python)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-3.0-black?style=flat-square\&logo=flask)](https://flask.palletsprojects.com)
@@ -10,7 +10,7 @@
 [![Chart.js](https://img.shields.io/badge/Chart.js-4.4-pink?style=flat-square)](https://chartjs.org)
 [![Vercel](https://img.shields.io/badge/Deployed-Vercel-black?style=flat-square\&logo=vercel)](https://vercel.com)
 
-**[🔗 Live Demo](https://india-slowdown-detector.vercel.app/)**  ·  **[📄 Research Paper](#)**  ·  **[📊 Training Data](model/training_data_v2.csv)**
+**[🔗 Live Demo](https://arthspandan.vercel.app/)**  ·  **[📄 Research Paper](#)**  ·  **[📊 Training Data](model/training_data_v2.csv)**
 
 </div>
 
@@ -18,8 +18,9 @@
 
 ## 🔍 What it does
 
-Combines **Machine Learning** and **high-frequency economic indicators** from 5 sectors to detect early signals of economic slowdown in India — before they appear in quarterly GDP releases.
+ArthSpandan combines **Machine Learning**, **macroeconomic intelligence**, and **high-frequency economic indicators** to detect early warning signs of an economic slowdown in India before they become visible in quarterly GDP releases.
 
+The platform continuously analyzes multiple sectors of the economy and produces an interpretable slowdown risk assessment supported by real-time macroeconomic data.
 | Sector               | Indicator                 | Source               |
 | -------------------- | ------------------------- | -------------------- |
 | 🏭 Manufacturing     | PMI (S&P Global)          | S&P Global / HSBC    |
@@ -27,6 +28,14 @@ Combines **Machine Learning** and **high-frequency economic indicators** from 5 
 | 🌾 Agriculture       | GVA Growth                | MOSPI                |
 | 🚢 Trade & Exports   | Merchandise Export Growth | Ministry of Commerce |
 | 👥 Employment        | Urban Unemployment Rate   | CMIE CPHS            |
+
+---
+
+## 🎯 Vision
+
+ArthSpandan aims to make India's macroeconomic intelligence accessible through explainable AI.
+
+Instead of relying solely on lagging indicators like quarterly GDP, the platform combines multiple leading economic indicators to provide an early assessment of the country's economic momentum, helping researchers, students, policymakers, investors, and businesses make better-informed decisions.
 
 ---
 
@@ -49,7 +58,7 @@ Combines **Machine Learning** and **high-frequency economic indicators** from 5 
 git clone https://github.com/kartikeymishradev/india-slowdown-detector-fixed.git
 
 # Enter project folder
-cd india-slowdown-detector
+cd india-slowdown-detector-fixed
 
 # Install dependencies
 pip install -r requirements.txt
@@ -77,7 +86,7 @@ http://localhost:5000
 git init
 git add .
 git commit -m "Initial Commit"
-git remote add origin https://github.com/YOUR_USERNAME/india-slowdown-detector.git
+git remote add origin https://github.com/YOUR_USERNAME/arthspandan.git
 git push -u origin main
 ```
 
@@ -101,7 +110,7 @@ Every GitHub push automatically triggers a new deployment.
 ## 📁 Project Structure
 
 ```text
-india-slowdown-detector/
+arthspandan/
 ├── app.py
 ├── vercel.json
 ├── model/
@@ -135,13 +144,14 @@ india-slowdown-detector/
 
 ## 📊 Features
 
-* Real-time economic indicator dashboard
-* Machine learning based slowdown prediction
-* Sector-wise risk analysis
-* Interactive visualizations using Chart.js
-* REST API architecture
-* Responsive web interface
-* One-click cloud deployment with Vercel
+- AI-powered macroeconomic slowdown prediction
+- Real-time economic indicator dashboard
+- Multi-sector risk analysis
+- Interactive macroeconomic visualizations
+- Explainable AI-generated economic insights
+- RESTful API architecture
+- Responsive cross-device interface
+- One-click deployment with Vercel
 
 ---
 
@@ -169,8 +179,12 @@ This project is intended for academic research and educational purposes. Predict
 
 <div align="center">
 
-Built by **Kartikey Mishra**
+Built by Kartikey Mishra
+
+Contributions by Mridul Rajput
+
 B.Tech CSE (AI & Financial Management)
-Dr. Shakuntala Misra National Rehabilitation University, Lucknow
+Dr. Shakuntala Misra National Rehabilitation University
+Lucknow, India
 
 </div>
