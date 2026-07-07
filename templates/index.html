@@ -540,9 +540,14 @@
       <div id="config-auth-view">
         <div class="modal-section" style="margin-bottom:15px">
           <div class="modal-section-title">Security Verification Required</div>
-          <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:12px">Please enter the Admin Token configured on Vercel to unlock the settings panel.</p>
+          <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:12px">Please enter the Admin Username and Password configured on Vercel to unlock the settings panel.</p>
+          <div style="margin-bottom:12px">
+            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Username</label>
+            <input type="text" id="admin-username-input" class="chat-input" style="width:100%" placeholder="Enter Username..." autocomplete="off">
+          </div>
           <div style="margin-bottom:15px">
-            <input type="password" id="admin-token-input" class="chat-input" style="width:100%" placeholder="Enter Admin Token..." onkeydown="if(event.key==='Enter') authenticateAdmin()">
+            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Password / Token</label>
+            <input type="password" id="admin-token-input" class="chat-input" style="width:100%" placeholder="Enter Password..." autocomplete="new-password" onkeydown="if(event.key==='Enter') authenticateAdmin()">
           </div>
           <button class="chat-send" onclick="authenticateAdmin()" style="width:100%;height:40px">Authenticate &amp; Unlock</button>
           <div id="auth-error-msg" style="color:var(--red);font-size:12px;margin-top:8px;text-align:center;font-weight:600"></div>

@@ -1460,8 +1460,10 @@ function initLearnSection(indicators) {
 function openConfigModal() {
   document.getElementById('config-modal-overlay').style.display = 'flex';
   
+  const storedUser = sessionStorage.getItem('admin_user') || '';
   const storedToken = sessionStorage.getItem('admin_token') || '';
-  if (storedToken) {
+  if (storedUser && storedToken) {
+    document.getElementById('admin-username-input').value = storedUser;
     document.getElementById('admin-token-input').value = storedToken;
     authenticateAdmin();
   } else {
@@ -1470,6 +1472,7 @@ function openConfigModal() {
     document.getElementById('config-raw-view').style.display = 'none';
     document.getElementById('config-system-view').style.display = 'none';
     document.getElementById('config-modal-tabs').style.display = 'none';
+    document.getElementById('admin-username-input').value = '';
     document.getElementById('admin-token-input').value = '';
     document.getElementById('auth-error-msg').textContent = '';
   }
@@ -1480,23 +1483,28 @@ function closeConfigModal() {
 }
 
 function authenticateAdmin() {
+  const user = document.getElementById('admin-username-input').value.trim();
   const token = document.getElementById('admin-token-input').value.trim();
   const headers = { 'Content-Type': 'application/json' };
+  if (user) {
+    headers['X-Admin-User'] = user;
+  }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
   
   const errMsg = document.getElementById('auth-error-msg');
-  errMsg.textContent = 'Verifying secure token...';
+  errMsg.textContent = 'Verifying credentials...';
   errMsg.style.color = 'var(--text)';
   
   fetch('/api/config', { headers: headers })
     .then(async res => {
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Invalid Admin Token');
+      if (!res.ok) throw new Error(data.error || 'Invalid Admin Username or Password');
       return data;
     })
     .then(data => {
+      sessionStorage.setItem('admin_user', user);
       sessionStorage.setItem('admin_token', token);
       window._serverConfig = data;
       
@@ -1576,8 +1584,12 @@ function saveConfiguration() {
   window._serverConfig.fallback_defaults.cpi_inflation_pct = parseFloat(document.getElementById('cfg-fallback-cpi').value);
   window._serverConfig.fallback_defaults.inr_usd = parseFloat(document.getElementById('cfg-fallback-inr').value);
   
+  const user = sessionStorage.getItem('admin_user') || '';
   const token = sessionStorage.getItem('admin_token') || '';
   const headers = { 'Content-Type': 'application/json' };
+  if (user) {
+    headers['X-Admin-User'] = user;
+  }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -1603,6 +1615,7 @@ function saveConfiguration() {
 }
 
 function triggerAIRefresh() {
+  const user = sessionStorage.getItem('admin_user') || '';
   const token = sessionStorage.getItem('admin_token') || '';
   const btn = document.getElementById('refresh-ai-btn');
   const statusDiv = document.getElementById('refresh-status');
@@ -1615,6 +1628,9 @@ function triggerAIRefresh() {
   logToConsole('[INFO] Authenticating API credentials with server...', 'info');
   
   const headers = { 'Content-Type': 'application/json' };
+  if (user) {
+    headers['X-Admin-User'] = user;
+  }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -1677,10 +1693,14 @@ function addLabeledQuarter() {
     }
   }
 
+  const user = sessionStorage.getItem('admin_user') || '';
   const token = sessionStorage.getItem('admin_token') || '';
   const headers = { 
     'Content-Type': 'application/json' 
   };
+  if (user) {
+    headers['X-Admin-User'] = user;
+  }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -1721,6 +1741,7 @@ function addLabeledQuarter() {
 }
 
 function triggerModelRetrain() {
+  const user = sessionStorage.getItem('admin_user') || '';
   const token = sessionStorage.getItem('admin_token') || '';
   const btn = document.getElementById('retrain-model-btn');
   if (btn) btn.disabled = true;
@@ -1729,6 +1750,9 @@ function triggerModelRetrain() {
   logToConsole('[INFO] Connecting to training pipeline subprocess...', 'info');
 
   const headers = { 'Content-Type': 'application/json' };
+  if (user) {
+    headers['X-Admin-User'] = user;
+  }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }

@@ -446,26 +446,37 @@ def api_shock_scenario(key):
     return jsonify(result)
 
 
+def verify_admin_credentials():
+    admin_token = os.environ.get("ADMIN_TOKEN")
+    if not admin_token:
+        # Localhost development allows bypass if no token is configured
+        return True
+        
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip()
+    user = request.headers.get("X-Admin-User", "admin").strip()
+    expected_user = os.environ.get("ADMIN_USER", "admin").strip()
+    
+    return token == admin_token and user == expected_user
+
+
 @app.route("/api/config", methods=["GET", "POST"])
 def api_config():
     config_path = os.path.join(os.path.dirname(__file__), "config.json")
     
-    # ── SECURITY CHECK FOR POST ──
+    # Strictly check credentials if ADMIN_TOKEN is set
+    if os.environ.get("ADMIN_TOKEN"):
+        if not verify_admin_credentials():
+            return jsonify({"error": "Unauthorized: Invalid admin username or password"}), 401
+    else:
+        # If no ADMIN_TOKEN, only allow POST from localhost
+        if request.method == "POST":
+            is_local = request.remote_addr in ["127.0.0.1", "localhost", "::1"]
+            if not is_local:
+                return jsonify({"error": "Unauthorized: Admin token not configured on server"}), 403
+                
+    # POST: save config.json content
     if request.method == "POST":
-        admin_token = os.environ.get("ADMIN_TOKEN")
-        is_local = request.remote_addr in ["127.0.0.1", "localhost", "::1"]
-        
-        # Verify token if set in environment
-        if admin_token:
-            auth_header = request.headers.get("Authorization", "")
-            token = auth_header.replace("Bearer ", "").strip()
-            if token != admin_token:
-                return jsonify({"error": "Unauthorized: Invalid admin token"}), 401
-        elif not is_local:
-            # If ADMIN_TOKEN is not configured and it is a remote connection, block write access for safety
-            return jsonify({"error": "Unauthorized: Admin token not configured on server"}), 403
-            
-        # Parse payload
         payload = request.get_json(silent=True) or {}
         if not payload:
             return jsonify({"error": "Invalid request payload"}), 400
@@ -488,13 +499,8 @@ def api_config():
 
 @app.route("/api/admin/retrain", methods=["POST"])
 def api_admin_retrain():
-    # Verify token
-    token = request.headers.get("Authorization")
-    expected_token = os.environ.get("ADMIN_TOKEN")
-    
-    if expected_token:
-        if not token or token != f"Bearer {expected_token}":
-            return jsonify({"error": "Unauthorized: Invalid Admin Token"}), 401
+    if os.environ.get("ADMIN_TOKEN") and not verify_admin_credentials():
+        return jsonify({"error": "Unauthorized: Invalid Admin Token"}), 401
             
     import subprocess
     import sys
@@ -522,13 +528,8 @@ def api_admin_retrain():
 
 @app.route("/api/admin/add-quarter", methods=["POST"])
 def api_admin_add_quarter():
-    # Verify token
-    token = request.headers.get("Authorization")
-    expected_token = os.environ.get("ADMIN_TOKEN")
-    
-    if expected_token:
-        if not token or token != f"Bearer {expected_token}":
-            return jsonify({"error": "Unauthorized: Invalid Admin Token"}), 401
+    if os.environ.get("ADMIN_TOKEN") and not verify_admin_credentials():
+        return jsonify({"error": "Unauthorized: Invalid Admin Token"}), 401
             
     payload = request.get_json()
     if not payload:
