@@ -423,7 +423,7 @@ def fetch_grounded_indicators(force=False):
             # serverless function timeout.
             client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=12000))
             return client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-1.5-flash",
                 contents=FIELDS_PROMPT,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(google_search=types.GoogleSearch())],
@@ -557,7 +557,7 @@ def fetch_extended_indicators(force=False):
         def _request(api_key):
             client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=12000))
             return client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-1.5-flash",
                 contents=EXTENDED_FIELDS_PROMPT,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(google_search=types.GoogleSearch())],
