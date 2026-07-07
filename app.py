@@ -280,9 +280,9 @@ def api_predict():
                 "Slowdown": round(float(proba[2]) * 100, 1),
             }
         }
-        # risk_score represents non-stable probability (Warning + Slowdown)
-        # to ensure warning zones reflect a higher systemic risk score
-        risk_score = 100 - round(prediction["probabilities"]["Stable"])
+        # risk_score represents continuous weighted risk:
+        # Warning probability (0.5 weight) + Slowdown probability (1.0 weight)
+        risk_score = round(prediction["probabilities"]["Warning"] * 0.5 + prediction["probabilities"]["Slowdown"] * 1.0)
     else:
         # Rule-based fallback ONLY used if model.pkl failed to load.
         risk_score = compute_risk_score(data)
@@ -438,12 +438,52 @@ def api_shock_scenario(key):
             "confidence": round(float(max(proba)) * 100, 1),
             "probabilities": probabilities,
         }
-        result["risk_score"] = 100 - round(probabilities["Stable"])
+        result["risk_score"] = round(probabilities["Warning"] * 0.5 + probabilities["Slowdown"] * 1.0)
     else:
         result["prediction"] = None
         result["risk_score"] = None
 
     return jsonify(result)
+
+
+@app.route("/api/config", methods=["GET", "POST"])
+def api_config():
+    config_path = os.path.join(os.path.dirname(__file__), "config.json")
+    
+    # ── SECURITY CHECK FOR POST ──
+    if request.method == "POST":
+        admin_token = os.environ.get("ADMIN_TOKEN")
+        is_local = request.remote_addr in ["127.0.0.1", "localhost", "::1"]
+        
+        # Verify token if set in environment
+        if admin_token:
+            auth_header = request.headers.get("Authorization", "")
+            token = auth_header.replace("Bearer ", "").strip()
+            if token != admin_token:
+                return jsonify({"error": "Unauthorized: Invalid admin token"}), 401
+        elif not is_local:
+            # If ADMIN_TOKEN is not configured and it is a remote connection, block write access for safety
+            return jsonify({"error": "Unauthorized: Admin token not configured on server"}), 403
+            
+        # Parse payload
+        payload = request.get_json(silent=True) or {}
+        if not payload:
+            return jsonify({"error": "Invalid request payload"}), 400
+            
+        try:
+            with open(config_path, "w") as f:
+                json.dump(payload, f, indent=2)
+            return jsonify({"status": "success", "message": "Configuration updated successfully"})
+        except Exception as e:
+            return jsonify({"error": f"Failed to save configuration: {str(e)}"}), 500
+            
+    # GET: return config.json content
+    try:
+        with open(config_path, "r") as f:
+            data = json.load(f)
+        return jsonify(data)
+    except Exception as e:
+        return jsonify({"error": f"Failed to read configuration: {str(e)}"}), 500
 
 
 @app.route("/api/refresh-grounding", methods=["POST"])

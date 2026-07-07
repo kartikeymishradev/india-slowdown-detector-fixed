@@ -1456,3 +1456,105 @@ function initLearnSection(indicators) {
     CHAT_HISTORY.forEach(m => appendMsg(m.text, m.role === 'user' ? 'user' : 'bot'));
   }
 }
+
+function openConfigModal() {
+  document.getElementById('config-modal-overlay').style.display = 'flex';
+  
+  fetch('/api/config')
+    .then(res => res.json())
+    .then(data => {
+      window._serverConfig = data;
+      document.getElementById('cfg-wpi').value = data.demand_supply.supply.wpi_inflation.value;
+      document.getElementById('cfg-core').value = data.demand_supply.supply.core_sector_growth.value;
+      document.getElementById('cfg-cap-util').value = data.demand_supply.supply.capacity_util.value;
+      document.getElementById('cfg-corp-earning').value = data.demand_supply.supply.corporate_earnings.value;
+      document.getElementById('cfg-pfce').value = data.demand_supply.demand.pfce_growth.value;
+      document.getElementById('cfg-repo').value = data.macro.repo_rate;
+    })
+    .catch(err => {
+      console.error(err);
+      alert('Failed to load configuration values from server.');
+    });
+}
+
+function closeConfigModal() {
+  document.getElementById('config-modal-overlay').style.display = 'none';
+}
+
+function saveConfiguration() {
+  if (!window._serverConfig) {
+    alert('No configuration data loaded.');
+    return;
+  }
+  
+  // Update local config values
+  window._serverConfig.demand_supply.supply.wpi_inflation.value = parseFloat(document.getElementById('cfg-wpi').value);
+  window._serverConfig.demand_supply.supply.core_sector_growth.value = parseFloat(document.getElementById('cfg-core').value);
+  window._serverConfig.demand_supply.supply.capacity_util.value = parseFloat(document.getElementById('cfg-cap-util').value);
+  window._serverConfig.demand_supply.supply.corporate_earnings.value = parseFloat(document.getElementById('cfg-corp-earning').value);
+  window._serverConfig.demand_supply.demand.pfce_growth.value = parseFloat(document.getElementById('cfg-pfce').value);
+  window._serverConfig.macro.repo_rate = parseFloat(document.getElementById('cfg-repo').value);
+  
+  const token = document.getElementById('admin-token-input').value.trim();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  fetch('/api/config', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify(window._serverConfig)
+  })
+    .then(async res => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Server returned an error');
+      return data;
+    })
+    .then(data => {
+      alert('Configuration updated successfully!');
+      closeConfigModal();
+      refreshAll();
+    })
+    .catch(err => {
+      alert(`Save failed: ${err.message}`);
+    });
+}
+
+function triggerAIRefresh() {
+  const token = document.getElementById('admin-token-input').value.trim();
+  const btn = document.getElementById('refresh-ai-btn');
+  const statusDiv = document.getElementById('refresh-status');
+  
+  btn.disabled = true;
+  statusDiv.style.color = 'var(--text)';
+  statusDiv.textContent = 'Refreshing AI data via Gemini, please wait... (takes up to 30s)';
+  
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  fetch('/api/refresh-grounding', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify({})
+  })
+    .then(async res => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Server returned an error');
+      return data;
+    })
+    .then(data => {
+      statusDiv.style.color = 'var(--green)';
+      statusDiv.textContent = `Success! Main updated: ${data.grounding_updated}, Extended: ${data.extended_updated}`;
+      refreshAll();
+    })
+    .catch(err => {
+      statusDiv.style.color = 'var(--red)';
+      statusDiv.textContent = `Refresh failed: ${err.message}`;
+    })
+    .finally(() => {
+      btn.disabled = false;
+    });
+}
