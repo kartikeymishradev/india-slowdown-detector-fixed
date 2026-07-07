@@ -280,10 +280,9 @@ def api_predict():
                 "Slowdown": round(float(proba[2]) * 100, 1),
             }
         }
-        # risk_score IS the ML model's own Slowdown probability -- single
-        # source of truth, so the gauge and the Stable/Warning/Slowdown
-        # label can never visually disagree with each other again.
-        risk_score = round(prediction["probabilities"]["Slowdown"])
+        # risk_score represents non-stable probability (Warning + Slowdown)
+        # to ensure warning zones reflect a higher systemic risk score
+        risk_score = 100 - round(prediction["probabilities"]["Stable"])
     else:
         # Rule-based fallback ONLY used if model.pkl failed to load.
         risk_score = compute_risk_score(data)
@@ -439,7 +438,7 @@ def api_shock_scenario(key):
             "confidence": round(float(max(proba)) * 100, 1),
             "probabilities": probabilities,
         }
-        result["risk_score"] = round(probabilities["Slowdown"])
+        result["risk_score"] = 100 - round(probabilities["Stable"])
     else:
         result["prediction"] = None
         result["risk_score"] = None

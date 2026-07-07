@@ -1185,7 +1185,16 @@ const CACHED_ANSWERS = {
     "India's GDP slowdown usually comes from a combination of: (1) Weak exports — global demand falls, IT and merchandise exports drop; (2) Low private investment — companies don't expand when uncertain; (3) High interest rates — RBI keeping rates high to fight inflation reduces borrowing; (4) Poor monsoon — bad harvest hurts rural income and demand; (5) Global factors — US recession or China slowdown affects India. The dashboard tracks all these signals — export growth, credit growth, PMI and unemployment together show which factor is driving any slowdown.",
 
   "Why does the stock market fall when FIIs pull out money?":
-    "FIIs (Foreign Institutional Investors) — big global funds like Blackrock, Vanguard — hold a significant chunk of Indian stocks. When they sell and pull money out: (1) Direct impact — selling pressure pushes stock prices down; (2) Rupee weakens — they convert rupees to dollars when leaving; (3) Sentiment effect — other investors panic-sell seeing FII outflows; (4) Liquidity tightens — less money in the market. FII outflow of ₹10,000+ Cr in a month is a warning sign. However, strong domestic investors (DIIs — mutual funds, LIC) now often absorb FII selling, making Indian markets more resilient than before."
+    "FIIs (Foreign Institutional Investors) — big global funds like Blackrock, Vanguard — hold a significant chunk of Indian stocks. When they sell and pull money out: (1) Direct impact — selling pressure pushes stock prices down; (2) Rupee weakens — they convert rupees to dollars when leaving; (3) Sentiment effect — other investors panic-sell seeing FII outflows; (4) Liquidity tightens — less money in the market. FII outflow of ₹10,000+ Cr in a month is a warning sign. However, strong domestic investors (DIIs — mutual funds, LIC) now often absorb FII selling, making Indian markets more resilient than before.",
+
+  "Why is the Indian Rupee weakening against the US Dollar?":
+    "The INR's value against the USD changes due to India's trade deficit (we import more value than we export) and global factors. When the US Federal Reserve raises interest rates, foreign investors pull capital out of India to invest in safe US bonds, creating dollar demand and weakening the Rupee. A weaker Rupee makes imports like crude oil expensive, feeding into domestic inflation, but benefits Indian IT companies and exporters.",
+
+  "What is the difference between CPI and WPI inflation?":
+    "CPI (Consumer Price Index) tracks retail prices paid directly by households, with a heavy weight on food (~46%) and services. It is RBI's main guide for rate decisions. WPI (Wholesale Price Index) measures prices at the factory gate, dominated by manufactured items (~64%) and fuel, reflecting producer costs and supply-chain pressures. When global commodity prices spike, WPI usually surges faster than CPI.",
+
+  "How does capacity utilization affect industrial growth?":
+    "Capacity utilization measures how much of factories' potential output is actually being used. If it remains below 70%, it indicates weak demand, meaning companies have no incentive to invest in new plants or hire. When it crosses 75% (measured quarterly by RBI's OBICUS survey), factories run close to full strength, which triggers corporate capital expenditure (Capex), job creation, and industrial expansion."
 };
 
 // ═══════════════════════════════════════════
@@ -1422,12 +1431,10 @@ async function sendQuestion() {
       btn.disabled = false;
       btn.textContent = 'Ask';
       btn.removeAttribute('data-cooldown');
-      btn.style.setProperty('--cd-pct', '100%');
     } else {
       btn.textContent = `${remaining}s`;
-      btn.style.setProperty('--cd-pct', `${Math.round(((15 - remaining) / 15) * 100)}%`);
     }
-  }, 250);
+  }, 1000);
   input.focus();
 }
 

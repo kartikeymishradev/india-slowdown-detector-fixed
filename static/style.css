@@ -617,15 +617,12 @@ a:hover {
 .chat-send { padding: 10px 20px; background: #0F172A; color: #fff; border: none; border-radius: 24px; font-size: 13px; font-weight: 600; cursor: pointer; transition: background .15s, box-shadow .25s; white-space: nowrap; position: relative; overflow: hidden; --cd-pct: 0%; }
 .chat-send:hover    { background: #1E293B; }
 .chat-send:disabled { cursor: not-allowed; }
-.chat-send[data-cooldown]::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, #334155 var(--cd-pct), #64748B var(--cd-pct));
-  transition: background 0.25s linear;
-  z-index: 0;
+.chat-send[data-cooldown] {
+  background: #cbd5e1 !important;
+  color: #64748b !important;
+  cursor: not-allowed;
+  box-shadow: none;
 }
-.chat-send[data-cooldown] { color: #e2e8f0; }
 .chat-send span, .chat-send { position: relative; z-index: 1; }
 .chat-disclaimer { font-size: 11px; color: var(--muted); text-align: center; margin-top: 10px; }
 
