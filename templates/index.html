@@ -528,54 +528,77 @@
       <button class="modal-close" onclick="closeConfigModal()" aria-label="Close">✕</button>
     </div>
     <div class="modal-body" style="padding-top:10px">
+      <!-- AUTH VIEW (VISIBLE BY DEFAULT) -->
+      <div id="config-auth-view">
+        <div class="modal-section" style="margin-bottom:15px">
+          <div class="modal-section-title">Security Verification Required</div>
+          <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:12px">Please enter the Admin Token configured on Vercel to unlock the settings panel.</p>
+          <div style="margin-bottom:15px">
+            <input type="password" id="admin-token-input" class="chat-input" style="width:100%" placeholder="Enter Admin Token..." onkeydown="if(event.key==='Enter') authenticateAdmin()">
+          </div>
+          <button class="chat-send" onclick="authenticateAdmin()" style="width:100%;height:40px">Authenticate &amp; Unlock</button>
+          <div id="auth-error-msg" style="color:var(--red);font-size:12px;margin-top:8px;text-align:center;font-weight:600"></div>
+        </div>
+      </div>
       
-      <div class="modal-section" style="margin-bottom:15px">
-        <div class="modal-section-title">Security Authentication</div>
-        <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Enter the Admin Token to save changes or trigger live data refresh. (Localhost does not require a token if env is empty).</p>
-        <div>
-          <input type="password" id="admin-token-input" class="chat-input" style="width:100%" placeholder="Enter Admin Token...">
+      <!-- CONFIG FIELDS VIEW (HIDDEN BY DEFAULT) -->
+      <div id="config-fields-view" style="display:none">
+        <div class="modal-section" style="margin-bottom:15px">
+          <div class="modal-section-title">Manual Indicator Configurations (config.json)</div>
+          <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Modify high-frequency and supply/demand indicators. Saved values will overwrite local config and re-trigger predictions.</p>
+          
+          <div class="config-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">WPI Inflation (%)</label>
+              <input type="number" step="0.01" id="cfg-wpi" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Core Sector Growth (%)</label>
+              <input type="number" step="0.01" id="cfg-core" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Capacity Utilization (%)</label>
+              <input type="number" step="0.01" id="cfg-cap-util" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Corporate Earnings PAT (%)</label>
+              <input type="number" step="0.01" id="cfg-corp-earning" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Private Consumption (PFCE) (%)</label>
+              <input type="number" step="0.01" id="cfg-pfce" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Repo Rate (%)</label>
+              <input type="number" step="0.01" id="cfg-repo" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Next MPC Meeting Date</label>
+              <input type="text" id="cfg-mpc" class="chat-input" style="width:100%" placeholder="e.g. 3–5 Aug 2026">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Fallback GDP Growth (%)</label>
+              <input type="number" step="0.01" id="cfg-fallback-gdp" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Fallback CPI Inflation (%)</label>
+              <input type="number" step="0.01" id="cfg-fallback-cpi" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Fallback INR/USD Rate</label>
+              <input type="number" step="0.01" id="cfg-fallback-inr" class="chat-input" style="width:100%">
+            </div>
+          </div>
+
+          <button class="chat-send" onclick="saveConfiguration()" style="width:100%;margin-bottom:10px;height:40px">Save Configuration</button>
         </div>
-      </div>
 
-      <div class="modal-section" style="margin-bottom:15px">
-        <div class="modal-section-title">Manual Indicator Configurations (config.json)</div>
-        <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Modify high-frequency and supply/demand indicators. Saved values will overwrite local config and re-trigger predictions.</p>
-        
-        <div class="config-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-          <div>
-            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">WPI Inflation (%)</label>
-            <input type="number" step="0.01" id="cfg-wpi" class="chat-input" style="width:100%">
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Core Sector Growth (%)</label>
-            <input type="number" step="0.01" id="cfg-core" class="chat-input" style="width:100%">
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Capacity Utilization (%)</label>
-            <input type="number" step="0.01" id="cfg-cap-util" class="chat-input" style="width:100%">
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Corporate Earnings PAT (%)</label>
-            <input type="number" step="0.01" id="cfg-corp-earning" class="chat-input" style="width:100%">
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Private Consumption (PFCE) (%)</label>
-            <input type="number" step="0.01" id="cfg-pfce" class="chat-input" style="width:100%">
-          </div>
-          <div>
-            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Repo Rate (%)</label>
-            <input type="number" step="0.01" id="cfg-repo" class="chat-input" style="width:100%">
-          </div>
+        <div class="modal-section" style="border-top:1.5px solid var(--border);padding-top:15px">
+          <div class="modal-section-title">AI Grounding Data Refresh</div>
+          <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Trigger a live data refresh across all indicators (GDP, CPI, PMI, etc.) using the Gemini AI agent.</p>
+          <button class="chat-send" id="refresh-ai-btn" onclick="triggerAIRefresh()" style="width:100%;background:#1E293B;height:40px">🔄 Refresh AI Grounded Data</button>
+          <div id="refresh-status" style="font-size:12px;margin-top:8px;text-align:center;font-weight:600"></div>
         </div>
-
-        <button class="chat-send" onclick="saveConfiguration()" style="width:100%;margin-bottom:10px;height:40px">Save Configuration</button>
-      </div>
-
-      <div class="modal-section" style="border-top:1.5px solid var(--border);padding-top:15px">
-        <div class="modal-section-title">AI Grounding Data Refresh</div>
-        <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Trigger a live data refresh across all indicators (GDP, CPI, PMI, etc.) using the Gemini AI agent.</p>
-        <button class="chat-send" id="refresh-ai-btn" onclick="triggerAIRefresh()" style="width:100%;background:#1E293B;height:40px">🔄 Refresh AI Grounded Data</button>
-        <div id="refresh-status" style="font-size:12px;margin-top:8px;text-align:center;font-weight:600"></div>
       </div>
 
     </div>

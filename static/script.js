@@ -1460,25 +1460,68 @@ function initLearnSection(indicators) {
 function openConfigModal() {
   document.getElementById('config-modal-overlay').style.display = 'flex';
   
-  fetch('/api/config')
-    .then(res => res.json())
+  const storedToken = sessionStorage.getItem('admin_token') || '';
+  if (storedToken) {
+    // If already verified this session, unlock directly
+    document.getElementById('admin-token-input').value = storedToken;
+    authenticateAdmin();
+  } else {
+    // Otherwise, show password lock screen
+    document.getElementById('config-auth-view').style.display = 'block';
+    document.getElementById('config-fields-view').style.display = 'none';
+    document.getElementById('admin-token-input').value = '';
+    document.getElementById('auth-error-msg').textContent = '';
+  }
+}
+
+function closeConfigModal() {
+  document.getElementById('config-modal-overlay').style.display = 'none';
+}
+
+function authenticateAdmin() {
+  const token = document.getElementById('admin-token-input').value.trim();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  const errMsg = document.getElementById('auth-error-msg');
+  errMsg.textContent = 'Verifying token...';
+  errMsg.style.color = 'var(--text)';
+  
+  fetch('/api/config', { headers: headers })
+    .then(async res => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Invalid Admin Token');
+      return data;
+    })
     .then(data => {
+      // Token verified successfully! Store it and unlock the panel
+      sessionStorage.setItem('admin_token', token);
       window._serverConfig = data;
+      
+      // Populate standard config values
       document.getElementById('cfg-wpi').value = data.demand_supply.supply.wpi_inflation.value;
       document.getElementById('cfg-core').value = data.demand_supply.supply.core_sector_growth.value;
       document.getElementById('cfg-cap-util').value = data.demand_supply.supply.capacity_util.value;
       document.getElementById('cfg-corp-earning').value = data.demand_supply.supply.corporate_earnings.value;
       document.getElementById('cfg-pfce').value = data.demand_supply.demand.pfce_growth.value;
       document.getElementById('cfg-repo').value = data.macro.repo_rate;
+      
+      // Populate extra configurations
+      document.getElementById('cfg-mpc').value = data.macro.next_mpc_meeting || '';
+      document.getElementById('cfg-fallback-gdp').value = data.fallback_defaults?.gdp_growth_pct || 7.7;
+      document.getElementById('cfg-fallback-cpi').value = data.fallback_defaults?.cpi_inflation_pct || 3.93;
+      document.getElementById('cfg-fallback-inr').value = data.fallback_defaults?.inr_usd || 94.5;
+      
+      // Toggle UI views
+      document.getElementById('config-auth-view').style.display = 'none';
+      document.getElementById('config-fields-view').style.display = 'block';
     })
     .catch(err => {
-      console.error(err);
-      alert('Failed to load configuration values from server.');
+      errMsg.textContent = err.message;
+      errMsg.style.color = 'var(--red)';
     });
-}
-
-function closeConfigModal() {
-  document.getElementById('config-modal-overlay').style.display = 'none';
 }
 
 function saveConfiguration() {
@@ -1487,7 +1530,7 @@ function saveConfiguration() {
     return;
   }
   
-  // Update local config values
+  // Update standard indicators
   window._serverConfig.demand_supply.supply.wpi_inflation.value = parseFloat(document.getElementById('cfg-wpi').value);
   window._serverConfig.demand_supply.supply.core_sector_growth.value = parseFloat(document.getElementById('cfg-core').value);
   window._serverConfig.demand_supply.supply.capacity_util.value = parseFloat(document.getElementById('cfg-cap-util').value);
@@ -1495,7 +1538,14 @@ function saveConfiguration() {
   window._serverConfig.demand_supply.demand.pfce_growth.value = parseFloat(document.getElementById('cfg-pfce').value);
   window._serverConfig.macro.repo_rate = parseFloat(document.getElementById('cfg-repo').value);
   
-  const token = document.getElementById('admin-token-input').value.trim();
+  // Update extra features
+  window._serverConfig.macro.next_mpc_meeting = document.getElementById('cfg-mpc').value.trim();
+  if (!window._serverConfig.fallback_defaults) window._serverConfig.fallback_defaults = {};
+  window._serverConfig.fallback_defaults.gdp_growth_pct = parseFloat(document.getElementById('cfg-fallback-gdp').value);
+  window._serverConfig.fallback_defaults.cpi_inflation_pct = parseFloat(document.getElementById('cfg-fallback-cpi').value);
+  window._serverConfig.fallback_defaults.inr_usd = parseFloat(document.getElementById('cfg-fallback-inr').value);
+  
+  const token = sessionStorage.getItem('admin_token') || '';
   const headers = { 'Content-Type': 'application/json' };
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -1522,7 +1572,7 @@ function saveConfiguration() {
 }
 
 function triggerAIRefresh() {
-  const token = document.getElementById('admin-token-input').value.trim();
+  const token = sessionStorage.getItem('admin_token') || '';
   const btn = document.getElementById('refresh-ai-btn');
   const statusDiv = document.getElementById('refresh-status');
   
