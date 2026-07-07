@@ -191,11 +191,14 @@ def compute_foundation_score(data, overrides=None):
     checked = 0
 
     for t in FOUNDATION_THRESHOLDS:
-        val = _get_by_key(data, t["key"])
+        # Overrides now simulate the actual value of the indicator, not the threshold
+        val = overrides.get(t["key"])
+        if val is None:
+            val = _get_by_key(data, t["key"])
         if val is None:
             continue  # missing data point -- skip rather than guess
         checked += 1
-        threshold = overrides.get(t["key"], t["default"])
+        threshold = t["default"]
         is_red = (val > threshold) if t["direction"] == "gt" else (val < threshold)
         if is_red:
             red_zone.append({"label": t["label"], "value": val})

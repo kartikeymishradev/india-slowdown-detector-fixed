@@ -859,6 +859,9 @@ a:hover {
   border-bottom: 1.5px dotted var(--blue);
   cursor: help;
 }
+.red-zone-val { color: var(--red) !important; font-weight: 700; }
+.green-zone-val { color: var(--green) !important; font-weight: 700; }
+
 /* ════════════════════════════════════════════
    PRINT — Export Report
 ════════════════════════════════════════════ */

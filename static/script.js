@@ -285,21 +285,39 @@ function toggleThresholdPanel() {
   if (opening) renderThresholdSliders();
 }
 
+function getIndicatorValue(key) {
+  if (!window._cachedData || !window._cachedData.indicators) return null;
+  const data = window._cachedData.indicators;
+  if (key.startsWith("ds:")) {
+    const parts = key.split(":");
+    const side = parts[1];
+    const field = parts[2];
+    return data.demand_supply?.[side]?.[field]?.value;
+  }
+  return data[key];
+}
+
 async function renderThresholdSliders() {
   const wrap = document.getElementById('threshold-sliders');
   const defs = await loadThresholdDefs();
   if (!defs.length) { wrap.innerHTML = '<div class="foundation-empty">Could not load threshold settings.</div>'; return; }
   wrap.innerHTML = defs.map(t => {
-    const val = currentOverrides[t.key] != null ? currentOverrides[t.key] : t.default;
-    const dirty = currentOverrides[t.key] != null && currentOverrides[t.key] !== t.default;
+    const actualVal = getIndicatorValue(t.key);
+    const val = currentOverrides[t.key] != null ? currentOverrides[t.key] : (actualVal != null ? actualVal : t.default);
+    const dirty = currentOverrides[t.key] != null && currentOverrides[t.key] !== actualVal;
+    
+    // Check if value is in warning/red zone
+    const isRed = t.direction === 'gt' ? val > t.default : val < t.default;
+    const zoneClass = isRed ? 'red-zone-val' : 'green-zone-val';
+
     return `
       <div class="threshold-slider-item${dirty ? ' dirty' : ''}" id="ts-item-${cssId(t.key)}">
         <div class="threshold-slider-top">
           <span class="threshold-slider-label">${t.label}</span>
-          <span class="threshold-slider-val" id="ts-val-${cssId(t.key)}">${t.direction === 'gt' ? '>' : '<'} ${val}${t.unit}</span>
+          <span class="threshold-slider-val ${zoneClass}" id="ts-val-${cssId(t.key)}">${val}${t.unit} (Limit: ${t.direction === 'gt' ? '>' : '<'} ${t.default}${t.unit})</span>
         </div>
         <input type="range" min="${t.min}" max="${t.max}" step="${t.step}" value="${val}"
-          oninput="onThresholdInput('${t.key}', this.value, '${t.direction}', '${t.unit}')"
+          oninput="onThresholdInput('${t.key}', this.value, '${t.direction}', ${t.default}, '${t.unit}')"
           onchange="onThresholdChange('${t.key}', this.value)">
       </div>`;
   }).join('');
@@ -307,9 +325,16 @@ async function renderThresholdSliders() {
 
 function cssId(key) { return key.replace(/[^a-zA-Z0-9]/g, '_'); }
 
-function onThresholdInput(key, value, direction, unit) {
-  // Cheap: just update the visible number while dragging. No network call.
-  document.getElementById(`ts-val-${cssId(key)}`).textContent = `${direction === 'gt' ? '>' : '<'} ${value}${unit}`;
+function onThresholdInput(key, value, direction, limit, unit) {
+  const val = parseFloat(value);
+  const isRed = direction === 'gt' ? val > limit : val < limit;
+  const valEl = document.getElementById(`ts-val-${cssId(key)}`);
+  valEl.textContent = `${value}${unit} (Limit: ${direction === 'gt' ? '>' : '<'} ${limit}${unit})`;
+  if (isRed) {
+    valEl.className = 'threshold-slider-val red-zone-val';
+  } else {
+    valEl.className = 'threshold-slider-val green-zone-val';
+  }
   document.getElementById(`ts-item-${cssId(key)}`).classList.add('dirty');
 }
 

@@ -96,14 +96,14 @@ rf_fitted = pipeline.named_steps['clf'].estimators_[0]
 feat_imp = pd.Series(rf_fitted.feature_importances_, index=FEATURES).sort_values(ascending=False)
 print("--- Feature Importance (Random Forest) ---")
 for feat, imp in feat_imp.items():
-    bar = '█' * int(imp * 50)
+    bar = '#' * int(imp * 50)
     print(f"  {feat:30s}: {imp:.3f}  {bar}")
 
 # ── Save ──────────────────────────────────────────────────────────────────────
 out_dir = os.path.dirname(__file__) or '.'
 joblib.dump(pipeline, os.path.join(out_dir, 'model.pkl'))
 
-print(f"\n Model saved → model/model.pkl")
+print(f"\n Model saved -> model/model.pkl")
 print(f" Trained on {len(df)} quarters with {len(FEATURES)} features")
 print("\nNew features vs v1:")
 print("  + core_sector_growth    (8-core industry index)")
