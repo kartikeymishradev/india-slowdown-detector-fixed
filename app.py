@@ -490,9 +490,15 @@ def verify_admin_credentials():
         token = request.headers.get("X-Admin-Token", "").strip()
         
     user = request.headers.get("X-Admin-User", "admin").strip().lower()
-    expected_user = os.environ.get("ADMIN_USER", "admin").strip().lower()
     
-    return token == admin_token.strip() and user == expected_user
+    # Strip any potential wrapping quotes added in Vercel env variable panel
+    clean_admin_token = admin_token.strip().strip("'").strip('"')
+    expected_user = os.environ.get("ADMIN_USER", "admin").strip().strip("'").strip('"').lower()
+    
+    print(f"[AUTH_DEBUG] Expected user: '{expected_user}', Provided user: '{user}'")
+    print(f"[AUTH_DEBUG] Expected token length: {len(clean_admin_token)}, Provided token length: {len(token)}")
+    
+    return token == clean_admin_token and user == expected_user
 
 
 @app.route("/api/config", methods=["GET", "POST"])
