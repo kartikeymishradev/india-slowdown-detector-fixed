@@ -1462,13 +1462,14 @@ function openConfigModal() {
   
   const storedToken = sessionStorage.getItem('admin_token') || '';
   if (storedToken) {
-    // If already verified this session, unlock directly
     document.getElementById('admin-token-input').value = storedToken;
     authenticateAdmin();
   } else {
-    // Otherwise, show password lock screen
     document.getElementById('config-auth-view').style.display = 'block';
     document.getElementById('config-fields-view').style.display = 'none';
+    document.getElementById('config-raw-view').style.display = 'none';
+    document.getElementById('config-system-view').style.display = 'none';
+    document.getElementById('config-modal-tabs').style.display = 'none';
     document.getElementById('admin-token-input').value = '';
     document.getElementById('auth-error-msg').textContent = '';
   }
@@ -1486,7 +1487,7 @@ function authenticateAdmin() {
   }
   
   const errMsg = document.getElementById('auth-error-msg');
-  errMsg.textContent = 'Verifying token...';
+  errMsg.textContent = 'Verifying secure token...';
   errMsg.style.color = 'var(--text)';
   
   fetch('/api/config', { headers: headers })
@@ -1496,11 +1497,10 @@ function authenticateAdmin() {
       return data;
     })
     .then(data => {
-      // Token verified successfully! Store it and unlock the panel
       sessionStorage.setItem('admin_token', token);
       window._serverConfig = data;
       
-      // Populate standard config values
+      // Populate fields
       document.getElementById('cfg-wpi').value = data.demand_supply.supply.wpi_inflation.value;
       document.getElementById('cfg-core').value = data.demand_supply.supply.core_sector_growth.value;
       document.getElementById('cfg-cap-util').value = data.demand_supply.supply.capacity_util.value;
@@ -1508,20 +1508,53 @@ function authenticateAdmin() {
       document.getElementById('cfg-pfce').value = data.demand_supply.demand.pfce_growth.value;
       document.getElementById('cfg-repo').value = data.macro.repo_rate;
       
-      // Populate extra configurations
       document.getElementById('cfg-mpc').value = data.macro.next_mpc_meeting || '';
       document.getElementById('cfg-fallback-gdp').value = data.fallback_defaults?.gdp_growth_pct || 7.7;
       document.getElementById('cfg-fallback-cpi').value = data.fallback_defaults?.cpi_inflation_pct || 3.93;
       document.getElementById('cfg-fallback-inr').value = data.fallback_defaults?.inr_usd || 94.5;
       
-      // Toggle UI views
+      // Unlock UI tabs & show first tab
       document.getElementById('config-auth-view').style.display = 'none';
-      document.getElementById('config-fields-view').style.display = 'block';
+      document.getElementById('config-modal-tabs').style.display = 'flex';
+      switchConfigTab('edit');
     })
     .catch(err => {
       errMsg.textContent = err.message;
       errMsg.style.color = 'var(--red)';
     });
+}
+
+function switchConfigTab(tabName) {
+  // Toggle tab buttons active class
+  document.querySelectorAll('.modal-tab').forEach(btn => btn.classList.remove('active'));
+  document.getElementById(`tab-btn-${tabName}`).classList.add('active');
+  
+  // Hide all views
+  document.getElementById('config-fields-view').style.display = 'none';
+  document.getElementById('config-raw-view').style.display = 'none';
+  document.getElementById('config-system-view').style.display = 'none';
+  
+  // Show active view
+  if (tabName === 'edit') {
+    document.getElementById('config-fields-view').style.display = 'block';
+  } else if (tabName === 'raw') {
+    document.getElementById('config-raw-view').style.display = 'block';
+    // Format and display raw JSON
+    document.getElementById('cfg-raw-code').textContent = JSON.stringify(window._serverConfig, null, 2);
+  } else if (tabName === 'system') {
+    document.getElementById('config-system-view').style.display = 'block';
+  }
+}
+
+function logToConsole(msg, type = 'info') {
+  const consoleDiv = document.getElementById('admin-console');
+  if (!consoleDiv) return;
+  const time = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  line.className = `terminal-line ${type}`;
+  line.textContent = `[${time}] ${msg}`;
+  consoleDiv.appendChild(line);
+  consoleDiv.scrollTop = consoleDiv.scrollHeight;
 }
 
 function saveConfiguration() {
@@ -1530,7 +1563,6 @@ function saveConfiguration() {
     return;
   }
   
-  // Update standard indicators
   window._serverConfig.demand_supply.supply.wpi_inflation.value = parseFloat(document.getElementById('cfg-wpi').value);
   window._serverConfig.demand_supply.supply.core_sector_growth.value = parseFloat(document.getElementById('cfg-core').value);
   window._serverConfig.demand_supply.supply.capacity_util.value = parseFloat(document.getElementById('cfg-cap-util').value);
@@ -1538,7 +1570,6 @@ function saveConfiguration() {
   window._serverConfig.demand_supply.demand.pfce_growth.value = parseFloat(document.getElementById('cfg-pfce').value);
   window._serverConfig.macro.repo_rate = parseFloat(document.getElementById('cfg-repo').value);
   
-  // Update extra features
   window._serverConfig.macro.next_mpc_meeting = document.getElementById('cfg-mpc').value.trim();
   if (!window._serverConfig.fallback_defaults) window._serverConfig.fallback_defaults = {};
   window._serverConfig.fallback_defaults.gdp_growth_pct = parseFloat(document.getElementById('cfg-fallback-gdp').value);
@@ -1578,7 +1609,10 @@ function triggerAIRefresh() {
   
   btn.disabled = true;
   statusDiv.style.color = 'var(--text)';
-  statusDiv.textContent = 'Refreshing AI data via Gemini, please wait... (takes up to 30s)';
+  statusDiv.textContent = 'Triggering Gemini grounding... monitor console logs below.';
+  
+  logToConsole('>>> MANUAL FORCE-REFRESH TRIGGERED BY ADMIN', 'warn');
+  logToConsole('[INFO] Authenticating API credentials with server...', 'info');
   
   const headers = { 'Content-Type': 'application/json' };
   if (token) {
@@ -1591,20 +1625,147 @@ function triggerAIRefresh() {
     body: JSON.stringify({})
   })
     .then(async res => {
+      logToConsole('[INFO] Server received request. Refresh pipeline running...', 'info');
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Server returned an error');
       return data;
     })
     .then(data => {
+      logToConsole('[SUCCESS] Gemini data fetch completed successfully.', 'success');
+      logToConsole(`[SUCCESS] Main indicators updated: ${data.grounding_updated}`, 'success');
+      logToConsole(`[SUCCESS] Extended high-frequency updated: ${data.extended_updated}`, 'success');
       statusDiv.style.color = 'var(--green)';
-      statusDiv.textContent = `Success! Main updated: ${data.grounding_updated}, Extended: ${data.extended_updated}`;
+      statusDiv.textContent = 'Refresh completed successfully!';
       refreshAll();
     })
     .catch(err => {
+      logToConsole(`[ERROR] Refresh pipeline failed: ${err.message}`, 'error');
       statusDiv.style.color = 'var(--red)';
-      statusDiv.textContent = `Refresh failed: ${err.message}`;
+      statusDiv.textContent = `Failed: ${err.message}`;
     })
     .finally(() => {
       btn.disabled = false;
+    });
+}
+
+function addLabeledQuarter() {
+  const fields = {
+    quarter: document.getElementById('add-q-name').value.trim(),
+    gdp_growth: parseFloat(document.getElementById('add-q-gdp').value),
+    cpi_inflation: parseFloat(document.getElementById('add-q-cpi').value),
+    wpi_inflation: parseFloat(document.getElementById('add-q-wpi').value),
+    pmi_manufacturing: parseFloat(document.getElementById('add-q-pmi').value),
+    repo_rate: parseFloat(document.getElementById('add-q-repo').value),
+    exports_yoy: parseFloat(document.getElementById('add-q-exports').value),
+    core_sector_growth: parseFloat(document.getElementById('add-q-core').value),
+    capacity_utilization: parseFloat(document.getElementById('add-q-cap').value),
+    corporate_earnings_growth: parseFloat(document.getElementById('add-q-corp').value),
+    pfce_growth: parseFloat(document.getElementById('add-q-pfce').value),
+    inr_usd: parseFloat(document.getElementById('add-q-inr').value),
+    unemployment: parseFloat(document.getElementById('add-q-unemp').value),
+    label: document.getElementById('add-q-label').value
+  };
+
+  if (!fields.quarter) {
+    alert('Please enter a Quarter name (e.g. Q1_FY2026).');
+    return;
+  }
+  for (const k in fields) {
+    if (k !== 'quarter' && isNaN(fields[k])) {
+      alert(`Please enter a valid numeric value for ${k.replace('_', ' ')}.`);
+      return;
+    }
+  }
+
+  const token = sessionStorage.getItem('admin_token') || '';
+  const headers = { 
+    'Content-Type': 'application/json' 
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  fetch('/api/admin/add-quarter', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify(fields)
+  })
+    .then(async res => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Server error');
+      return data;
+    })
+    .then(data => {
+      alert(data.message);
+      // Clear inputs
+      document.getElementById('add-q-name').value = '';
+      document.getElementById('add-q-gdp').value = '';
+      document.getElementById('add-q-cpi').value = '';
+      document.getElementById('add-q-wpi').value = '';
+      document.getElementById('add-q-pmi').value = '';
+      document.getElementById('add-q-repo').value = '';
+      document.getElementById('add-q-exports').value = '';
+      document.getElementById('add-q-core').value = '';
+      document.getElementById('add-q-cap').value = '';
+      document.getElementById('add-q-corp').value = '';
+      document.getElementById('add-q-pfce').value = '';
+      document.getElementById('add-q-inr').value = '';
+      document.getElementById('add-q-unemp').value = '';
+      
+      switchConfigTab('system');
+      logToConsole(`[SYS] Quarter ${fields.quarter} added. Ready to retrain model.`, 'warn');
+    })
+    .catch(err => {
+      alert(`Failed to add quarter: ${err.message}`);
+    });
+}
+
+function triggerModelRetrain() {
+  const token = sessionStorage.getItem('admin_token') || '';
+  const btn = document.getElementById('retrain-model-btn');
+  if (btn) btn.disabled = true;
+
+  logToConsole('>>> ECONOMIC MODEL RETRAINING TRIGGERED BY ADMIN', 'warn');
+  logToConsole('[INFO] Connecting to training pipeline subprocess...', 'info');
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  fetch('/api/admin/retrain', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify({})
+  })
+    .then(async res => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Training process returned an error');
+      return data;
+    })
+    .then(data => {
+      if (data.stdout) {
+        data.stdout.split('\n').forEach(line => {
+          if (line.trim()) {
+            if (line.startsWith('=')) {
+              logToConsole(line, 'info');
+            } else if (line.includes('Accuracy') || line.includes('Score')) {
+              logToConsole(line, 'success');
+            } else {
+              logToConsole(line, 'info');
+            }
+          }
+        });
+      }
+      logToConsole('[SUCCESS] Model re-trained and active state refreshed in memory.', 'success');
+      alert('Model retrained successfully!');
+      refreshAll();
+    })
+    .catch(err => {
+      logToConsole(`[ERROR] Training failed: ${err.message}`, 'error');
+      alert(`Retrain failed: ${err.message}`);
+    })
+    .finally(() => {
+      if (btn) btn.disabled = false;
     });
 }

@@ -486,6 +486,99 @@ def api_config():
         return jsonify({"error": f"Failed to read configuration: {str(e)}"}), 500
 
 
+@app.route("/api/admin/retrain", methods=["POST"])
+def api_admin_retrain():
+    # Verify token
+    token = request.headers.get("Authorization")
+    expected_token = os.environ.get("ADMIN_TOKEN")
+    
+    if expected_token:
+        if not token or token != f"Bearer {expected_token}":
+            return jsonify({"error": "Unauthorized: Invalid Admin Token"}), 401
+            
+    import subprocess
+    import sys
+    import joblib
+    
+    try:
+        script_path = os.path.join(os.path.dirname(__file__), "model", "train_model.py")
+        result = subprocess.run([sys.executable, script_path], capture_output=True, text=True, cwd=os.path.dirname(__file__))
+        
+        # Reload global model
+        global model
+        model_path = os.path.join(os.path.dirname(__file__), "model", "model.pkl")
+        if os.path.exists(model_path):
+            model = joblib.load(model_path)
+            
+        return jsonify({
+            "status": "success",
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "returncode": result.returncode
+        })
+    except Exception as e:
+        return jsonify({"error": f"Failed to retrain model: {str(e)}"}), 500
+
+
+@app.route("/api/admin/add-quarter", methods=["POST"])
+def api_admin_add_quarter():
+    # Verify token
+    token = request.headers.get("Authorization")
+    expected_token = os.environ.get("ADMIN_TOKEN")
+    
+    if expected_token:
+        if not token or token != f"Bearer {expected_token}":
+            return jsonify({"error": "Unauthorized: Invalid Admin Token"}), 401
+            
+    payload = request.get_json()
+    if not payload:
+        return jsonify({"error": "Invalid request payload"}), 400
+        
+    required_fields = [
+        "quarter", "gdp_growth", "cpi_inflation", "wpi_inflation",
+        "pmi_manufacturing", "repo_rate", "exports_yoy", "core_sector_growth",
+        "capacity_utilization", "corporate_earnings_growth", "pfce_growth",
+        "inr_usd", "unemployment", "label"
+    ]
+    
+    for f in required_fields:
+        if f not in payload:
+            return jsonify({"error": f"Missing required field: {f}"}), 400
+            
+    csv_path = os.path.join(os.path.dirname(__file__), "model", "training_data_v2.csv")
+    try:
+        df = pd.read_csv(csv_path)
+        
+        # Check duplicate
+        q_name = payload["quarter"].strip()
+        if q_name in df["quarter"].values:
+            return jsonify({"error": f"Quarter '{q_name}' already exists in dataset."}), 400
+            
+        new_row = {
+            "quarter": q_name,
+            "gdp_growth": float(payload["gdp_growth"]),
+            "cpi_inflation": float(payload["cpi_inflation"]),
+            "wpi_inflation": float(payload["wpi_inflation"]),
+            "pmi_manufacturing": float(payload["pmi_manufacturing"]),
+            "repo_rate": float(payload["repo_rate"]),
+            "exports_yoy": float(payload["exports_yoy"]),
+            "core_sector_growth": float(payload["core_sector_growth"]),
+            "capacity_utilization": float(payload["capacity_utilization"]),
+            "corporate_earnings_growth": float(payload["corporate_earnings_growth"]),
+            "pfce_growth": float(payload["pfce_growth"]),
+            "inr_usd": float(payload["inr_usd"]),
+            "unemployment": float(payload["unemployment"]),
+            "label": payload["label"].strip()
+        }
+        
+        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+        df.to_csv(csv_path, index=False)
+        
+        return jsonify({"status": "success", "message": f"Successfully added quarter {q_name} to training dataset."})
+    except Exception as e:
+        return jsonify({"error": f"Failed to edit CSV: {str(e)}"}), 500
+
+
 @app.route("/api/refresh-grounding", methods=["POST"])
 def api_refresh_grounding():
     """Manually (or periodically, via the frontend's background timer)

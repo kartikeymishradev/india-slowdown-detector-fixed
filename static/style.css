@@ -870,3 +870,83 @@ a:hover {
   body { background: #fff; }
   .card { box-shadow: none; border: 1px solid #ccc; }
 }
+
+/* ════════════════════════════════════════════
+   ADMIN COMMAND CENTER
+   ════════════════════════════════════════════ */
+.modal-tab {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  color: var(--text-muted);
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.modal-tab:hover {
+  background: var(--border);
+  color: var(--text);
+}
+.modal-tab.active {
+  background: #0F172A;
+  color: #fff;
+  border-color: #0F172A;
+}
+
+/* Dark Terminal Console */
+.admin-terminal {
+  background: #090D16;
+  border: 1.5px solid #1E293B;
+  border-radius: 8px;
+  padding: 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  color: #10B981;
+  height: 180px;
+  overflow-y: auto;
+  margin-top: 10px;
+  box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+  text-align: left;
+}
+.terminal-line {
+  line-height: 1.5;
+  white-space: pre-wrap;
+  margin-bottom: 4px;
+}
+.terminal-line.info { color: #38BDF8; }
+.terminal-line.success { color: #34D399; }
+.terminal-line.error { color: #F87171; }
+.terminal-line.warn { color: #FBBF24; }
+
+.status-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+.status-stat-card {
+  background: #F8FAFC;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: left;
+}
+.status-stat-title {
+  font-size: 11px;
+  color: var(--muted);
+  text-transform: uppercase;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+.status-stat-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.status-stat-desc {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}

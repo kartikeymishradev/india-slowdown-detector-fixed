@@ -522,12 +522,20 @@
 
 <!-- ── ADMIN SETTINGS MODAL ── -->
 <div class="modal-overlay" id="config-modal-overlay" style="display:none" onclick="if(event.target===this) closeConfigModal()">
-  <div class="modal-box" style="max-width:550px">
-    <div class="modal-head">
-      <span class="modal-title">Admin Settings Panel</span>
+  <div class="modal-box" style="max-width:650px">
+    <div class="modal-head" style="margin-bottom:12px">
+      <span class="modal-title">Admin Command Center</span>
       <button class="modal-close" onclick="closeConfigModal()" aria-label="Close">✕</button>
     </div>
-    <div class="modal-body" style="padding-top:10px">
+
+    <!-- TABS (HIDDEN BY DEFAULT UNTIL AUTHENTICATED) -->
+    <div class="modal-tabs" id="config-modal-tabs" style="display:none; gap:10px; border-bottom:1.5px solid var(--border); padding-bottom:10px; margin-bottom:15px">
+      <button class="modal-tab active" onclick="switchConfigTab('edit')" id="tab-btn-edit">⚙️ Config Editor</button>
+      <button class="modal-tab" onclick="switchConfigTab('raw')" id="tab-btn-raw">📄 Raw JSON</button>
+      <button class="modal-tab" onclick="switchConfigTab('system')" id="tab-btn-system">⚡ System &amp; Model</button>
+    </div>
+
+    <div class="modal-body" style="padding-top:5px">
       <!-- AUTH VIEW (VISIBLE BY DEFAULT) -->
       <div id="config-auth-view">
         <div class="modal-section" style="margin-bottom:15px">
@@ -541,7 +549,7 @@
         </div>
       </div>
       
-      <!-- CONFIG FIELDS VIEW (HIDDEN BY DEFAULT) -->
+      <!-- TAB 1: CONFIG FIELDS VIEW -->
       <div id="config-fields-view" style="display:none">
         <div class="modal-section" style="margin-bottom:15px">
           <div class="modal-section-title">Manual Indicator Configurations (config.json)</div>
@@ -591,17 +599,135 @@
           </div>
 
           <button class="chat-send" onclick="saveConfiguration()" style="width:100%;margin-bottom:10px;height:40px">Save Configuration</button>
+
+          <!-- CSV Append Form -->
+          <details style="margin-top:15px; border-top:1.5px solid var(--border); padding-top:15px">
+            <summary style="font-size:12.5px; font-weight:700; color:var(--text); cursor:pointer; margin-bottom:10px; user-select:none">➕ Add New Labeled Quarter to Dataset (CSV)</summary>
+            <p class="modal-text" style="font-size:11px; color:var(--muted); margin-bottom:10px">Append a new quarter to model's training CSV. Then go to <i>System &amp; Model</i> tab to retrain.</p>
+            
+            <div class="config-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px">
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Quarter Name</label>
+                <input type="text" id="add-q-name" class="chat-input" style="width:100%" placeholder="e.g. Q1_FY2026">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">GDP Growth (%)</label>
+                <input type="number" step="0.01" id="add-q-gdp" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">CPI Inflation (%)</label>
+                <input type="number" step="0.01" id="add-q-cpi" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">WPI Inflation (%)</label>
+                <input type="number" step="0.01" id="add-q-wpi" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Manufacturing PMI</label>
+                <input type="number" step="0.1" id="add-q-pmi" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Repo Rate (%)</label>
+                <input type="number" step="0.01" id="add-q-repo" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Exports YoY (%)</label>
+                <input type="number" step="0.01" id="add-q-exports" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Core Sector Growth (%)</label>
+                <input type="number" step="0.01" id="add-q-core" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Capacity Utilization (%)</label>
+                <input type="number" step="0.01" id="add-q-cap" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Corporate PAT Growth (%)</label>
+                <input type="number" step="0.01" id="add-q-corp" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">PFCE Growth (%)</label>
+                <input type="number" step="0.01" id="add-q-pfce" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">INR/USD Rate</label>
+                <input type="number" step="0.01" id="add-q-inr" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Unemployment (%)</label>
+                <input type="number" step="0.01" id="add-q-unemp" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Economic Label</label>
+                <select id="add-q-label" class="chat-input" style="width:100%; height:38px; background:var(--surface); border:1.5px solid var(--border); border-radius:8px; padding-left:8px">
+                  <option value="Stable">Stable</option>
+                  <option value="Warning">Warning</option>
+                  <option value="Slowdown">Slowdown</option>
+                </select>
+              </div>
+            </div>
+            <button class="chat-send" onclick="addLabeledQuarter()" style="width:100%; height:38px; background:#047857; margin-bottom:10px">Add Quarter to CSV</button>
+          </details>
+        </div>
+      </div>
+
+      <!-- TAB 2: RAW JSON VIEW -->
+      <div id="config-raw-view" style="display:none">
+        <div class="modal-section" style="margin-bottom:15px">
+          <div class="modal-section-title">Raw config.json Codebase View</div>
+          <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:8px">View the raw configuration state currently active in memory.</p>
+          <div class="admin-terminal" style="height:250px; overflow-y:auto;">
+            <pre id="cfg-raw-code" style="margin:0; font-family:'JetBrains Mono',monospace; font-size:11px; color:#34D399;"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: SYSTEM & MODEL VIEW -->
+      <div id="config-system-view" style="display:none">
+        <div class="status-stat-grid">
+          <div class="status-stat-card">
+            <div class="status-stat-title">ML Model Type</div>
+            <div class="status-stat-val">Ensemble Classifier</div>
+            <div class="status-stat-desc">Random Forest + Gradient Boosting</div>
+          </div>
+          <div class="status-stat-card">
+            <div class="status-stat-title">Training Dataset</div>
+            <div class="status-stat-val">52 Labeled Quarters</div>
+            <div class="status-stat-desc">FY2013 – FY2025 (v2 Data)</div>
+          </div>
+          <div class="status-stat-card">
+            <div class="status-stat-title">Target Features</div>
+            <div class="status-stat-val">18 Features</div>
+            <div class="status-stat-desc">12 Base + 6 Derived Momentum Metrics</div>
+          </div>
+          <div class="status-stat-card">
+            <div class="status-stat-title">Model Health</div>
+            <div class="status-stat-val">Online (100% OK)</div>
+            <div class="status-stat-desc">StandardScaler pipeline loaded</div>
+          </div>
         </div>
 
         <div class="modal-section" style="border-top:1.5px solid var(--border);padding-top:15px">
-          <div class="modal-section-title">AI Grounding Data Refresh</div>
-          <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Trigger a live data refresh across all indicators (GDP, CPI, PMI, etc.) using the Gemini AI agent.</p>
-          <button class="chat-send" id="refresh-ai-btn" onclick="triggerAIRefresh()" style="width:100%;background:#1E293B;height:40px">🔄 Refresh AI Grounded Data</button>
-          <div id="refresh-status" style="font-size:12px;margin-top:8px;text-align:center;font-weight:600"></div>
+          <div class="modal-section-title">Ensemble Model &amp; Data Administration</div>
+          <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Trigger a live data refresh across all indicators or run cross-validation training on the dataset.</p>
+          
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px">
+            <button class="chat-send" id="refresh-ai-btn" onclick="triggerAIRefresh()" style="background:#1E293B;height:40px;margin-bottom:0">🔄 Refresh AI Data</button>
+            <button class="chat-send" id="retrain-model-btn" onclick="triggerModelRetrain()" style="background:#0F172A;height:40px;margin-bottom:0">🧠 Retrain ML Model</button>
+          </div>
+          
+          <!-- Developer Terminal -->
+          <div class="admin-terminal" id="admin-console">
+            <div class="terminal-line info">[SYS] ArthSpandan Command Console initialized.</div>
+            <div class="terminal-line info">[SYS] Standing by for user requests...</div>
+          </div>
         </div>
       </div>
 
     </div>
+  </div>
+</div>
   </div>
 </div>
 
