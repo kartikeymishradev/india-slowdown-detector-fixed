@@ -746,8 +746,6 @@ def api_admin_add_quarter():
         return jsonify({"status": "success", "message": f"Successfully added quarter {q_name} to training dataset."})
     else:
         return jsonify({"error": "Failed to add quarter: Read-only file system and Redis unavailable"}), 500
-    except Exception as e:
-        return jsonify({"error": f"Failed to edit CSV: {str(e)}"}), 500
 
 
 @app.route("/api/refresh-grounding", methods=["POST"])
