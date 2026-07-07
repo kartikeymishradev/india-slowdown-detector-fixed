@@ -304,9 +304,10 @@ def _get_key_pool(specific_env_var):
 def _call_with_fallback(api_key_pool, make_request):
     """Try make_request(api_key) for each key in api_key_pool, in order.
     On a quota/rate-limit error, mark that key exhausted until the next
-    UTC midnight and move to the next key. On any other exception, or once
-    every key has been tried, re-raise the last exception so the caller's
-    existing except-block / fallback-to-cache logic still applies.
+    UTC midnight and move to the next key. On any other exception (like a 504
+    timeout or gateway error), still log it and proceed to the next key in
+    the pool. Once every key has been tried, re-raise the last exception so
+    the caller's fallback-to-cache logic applies.
 
     Returns the result of the first successful call."""
     last_exc = None
@@ -322,12 +323,11 @@ def _call_with_fallback(api_key_pool, make_request):
                     f"⚠️  Gemini key ending …{api_key[-6:]} hit quota limit, "
                     f"marking exhausted for ~{int(cooldown/3600)}h, trying next key"
                 )
-                continue  # try the next key in the pool
             else:
-                # Not a quota error (bad key, network issue, etc.) -- no
-                # point burning through the rest of the pool for this one,
-                # but we still let the caller's except-block handle it.
-                raise
+                print(
+                    f"⚠️  Gemini key ending …{api_key[-6:]} failed with transient error: {e}. Trying next key in pool..."
+                )
+            continue  # try the next key in the pool
     # Every key in the pool was exhausted (or pool was empty)
     if last_exc:
         raise last_exc
@@ -423,7 +423,7 @@ def fetch_grounded_indicators(force=False):
             # serverless function timeout.
             client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=12000))
             return client.models.generate_content(
-                model="gemini-1.5-flash",
+                model="gemini-2.5-flash",
                 contents=FIELDS_PROMPT,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(google_search=types.GoogleSearch())],
@@ -557,7 +557,7 @@ def fetch_extended_indicators(force=False):
         def _request(api_key):
             client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=12000))
             return client.models.generate_content(
-                model="gemini-1.5-flash",
+                model="gemini-2.5-flash",
                 contents=EXTENDED_FIELDS_PROMPT,
                 config=types.GenerateContentConfig(
                     tools=[types.Tool(google_search=types.GoogleSearch())],
