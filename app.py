@@ -563,7 +563,7 @@ def api_learn():
         if metrics:
             parts.append("- " + " | ".join(metrics))
         if parts:
-            dashboard_block = "\n\nToday's live ArthaSanket dashboard snapshot (use this if the question refers to \"today\", \"current\", \"right now\", or a specific number on the dashboard; otherwise answer generally):\n" + "\n".join(parts)
+            dashboard_block = "\n\nToday's live ArthSpandan dashboard snapshot (use this if the question refers to \"today\", \"current\", \"right now\", or a specific number on the dashboard; otherwise answer generally):\n" + "\n".join(parts)
 
     try:
         from google import genai

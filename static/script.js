@@ -886,7 +886,7 @@ function exportCSV() {
   const a = document.createElement('a');
   const stamp = new Date().toISOString().slice(0, 10);
   a.href = url;
-  a.download = `arthasanket-indicators-${stamp}.csv`;
+  a.download = `arthspandan-indicators-${stamp}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
