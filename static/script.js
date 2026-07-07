@@ -59,9 +59,25 @@ const HIST_DATA = {
   unemp:   [8.2, 8.0, 9.4, 13.2, 8.0, 7.8, 7.7, 8.1],
 };
 
+// Removes the shimmering skeleton placeholders (see .sk in style.css) once
+// real values have been written into the DOM.
+function clearSkeletons() {
+  document.querySelectorAll('.sk').forEach(el => el.classList.remove('sk'));
+}
+
 async function apiFetch(url, options) {
-  try { const r = await fetch(url, options); if(!r.ok) throw new Error(); return await r.json(); }
-  catch { return null; }
+  try {
+    const r = await fetch(url, options);
+    if (!r.ok) {
+      const body = await r.text().catch(() => '');
+      console.error(`apiFetch failed: ${url} -> ${r.status} ${r.statusText}`, body);
+      return null;
+    }
+    return await r.json();
+  } catch (err) {
+    console.error(`apiFetch network error: ${url}`, err);
+    return null;
+  }
 }
 
 function setHeroBanner(risk, label) {
@@ -75,7 +91,10 @@ function setHeroBanner(risk, label) {
     scoreEl.title = `Risk Score ${risk}/100\nTop factors: ${topFactors}\n\n0–30: Low risk (Stable)\n31–60: Moderate (Watch)\n61–100: High risk (Slowdown)`;
     scoreEl.style.cursor = 'help';
   }
-  const fillEl = document.getElementById('sb-score-fill'); if(fillEl) fillEl.style.width = risk + '%';
+  // Use a GPU-accelerated transform instead of animating `width` — avoids
+  // layout recalculation / jank on mobile and eliminates layout shift (CLS).
+  const fillEl = document.getElementById('sb-score-fill');
+  if (fillEl) fillEl.style.transform = `scaleX(${Math.max(0, Math.min(100, risk)) / 100})`;
 
   const cfg = {
     'Stable':   ['green', 'Economy Stable', 'No immediate slowdown signals detected across major sectors'],
@@ -168,6 +187,8 @@ function buildGauge(risk) {
   const el = document.getElementById('gauge-num');
   el.textContent = risk + '/100';
   el.style.color = color;
+  const gaugeSk = document.getElementById('gaugeChart-sk');
+  if (gaugeSk) gaugeSk.classList.add('chart-sk-hidden');
 }
 
 function buildPrediction(pred) {
@@ -190,6 +211,8 @@ function buildPrediction(pred) {
 // which reuses the exact same 12 raw indicators the ML model trains on, so
 // this card and the ML Model Prediction card above can never quietly
 // disagree about what data they looked at.
+let _sandboxUpdateInProgress = false;
+
 function buildFoundation(fs) {
   const numEl = document.getElementById('foundation-num');
   const subEl = document.getElementById('foundation-sub');
@@ -200,6 +223,20 @@ function buildFoundation(fs) {
     listEl.innerHTML = '';
     return;
   }
+
+  // If this is a normal data refresh (not a sandbox recompute) and the
+  // threshold panel is open with custom overrides still active, the
+  // sliders would otherwise be left showing stale dragged positions next
+  // to a score that just silently reset to the real defaults underneath
+  // them. Keep the two in sync by resetting the sandbox along with it.
+  if (!_sandboxUpdateInProgress) {
+    const panel = document.getElementById('threshold-panel');
+    if (panel && panel.style.display !== 'none' && Object.keys(currentOverrides).length) {
+      currentOverrides = {};
+      renderThresholdSliders();
+    }
+  }
+
   // Fraction format (e.g. "4/12") instead of a second "/100" score --
   // the ML Model card above already owns the 0-100 risk scale, and having
   // two differently-scaled "scores" on the same screen was confusing.
@@ -208,6 +245,7 @@ function buildFoundation(fs) {
   numEl.textContent = `${fs.red_zone.length}/${fs.checked}`;
   numEl.style.color = color;
   subEl.textContent = 'Warning Signs';
+  subEl.style.color = '';
 
   if (fs.red_zone.length === 0) {
     listEl.innerHTML = '<div class="foundation-empty">No indicators currently past their weak-zone threshold.</div>';
@@ -275,21 +313,45 @@ function onThresholdInput(key, value, direction, unit) {
   document.getElementById(`ts-item-${cssId(key)}`).classList.add('dirty');
 }
 
+let _thresholdRequestSeq = 0; // guards against a slow older request overwriting a newer one
+
 async function onThresholdChange(key, value) {
   // Fires when the user releases the slider -- ask the real backend to
   // recompute the Foundation Score under this custom threshold.
   currentOverrides[key] = parseFloat(value);
   const listEl = document.getElementById('foundation-list');
+  const subEl = document.getElementById('foundation-sub');
+  const overlay = document.getElementById('threshold-loading-overlay');
+  const sliders = document.querySelectorAll('#threshold-sliders input[type="range"]');
+
+  const seq = ++_thresholdRequestSeq;
   listEl.style.opacity = '0.5';
+  overlay.classList.add('active');           // show spinner
+  sliders.forEach(s => s.disabled = true);   // block dragging another slider mid-request
+
   try {
     const fs = await apiFetch('/api/foundation-score/recompute', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ overrides: currentOverrides })
     });
-    if (fs) buildFoundation(fs);
+    if (seq !== _thresholdRequestSeq) return; // a newer request already landed, ignore this stale one
+    if (fs) {
+      _sandboxUpdateInProgress = true;
+      buildFoundation(fs);
+      _sandboxUpdateInProgress = false;
+    } else {
+      // Don't fail silently -- make it obvious the score on screen is now
+      // stale/out of sync with the sliders, and point at the console for detail.
+      subEl.textContent = '⚠ Could not reach the server to recompute — check console / that Flask is running';
+      subEl.style.color = 'var(--red)';
+    }
   } finally {
-    listEl.style.opacity = '1';
+    if (seq === _thresholdRequestSeq) {
+      listEl.style.opacity = '1';
+      overlay.classList.remove('active');
+      sliders.forEach(s => s.disabled = false);
+    }
   }
 }
 
@@ -380,6 +442,8 @@ function buildTrend(s) {
       }
     }
   });
+  const trendSk = document.getElementById('trendChart-sk');
+  if (trendSk) trendSk.classList.add('chart-sk-hidden');
 }
 
 function buildDS(ds) {
@@ -478,6 +542,10 @@ function buildFeat(canvasId) {
     }
   });
   if (isModal) modalFeatChart = chart; else featChart = chart;
+  if (!isModal) {
+    const featSk = document.getElementById('featChart-sk');
+    if (featSk) featSk.classList.add('chart-sk-hidden');
+  }
 }
 
 // ═══════════════════════════════════════════
@@ -517,6 +585,8 @@ function buildHist() {
       }
     }
   });
+  const histSk = document.getElementById('histChart-sk');
+  if (histSk) histSk.classList.add('chart-sk-hidden');
 }
 
 function initHistToggles() {
@@ -600,32 +670,38 @@ async function refreshAll() {
   document.getElementById('last-updated').textContent = 'Refreshing…';
   const data = await apiFetch('/api/predict');
   if (!data) {
-  document.getElementById('last-updated').textContent = 'Error – check connection';
-  clearInterval(loadingInterval);
-  document.getElementById("loader").style.display = "none";
-  return;
-}
+    document.getElementById('last-updated').textContent = 'Error – check connection';
+    clearSkeletons();
+    clearInterval(loadingInterval);
+    document.getElementById("loader").style.display = "none";
+    return;
+  }
   window._cachedData = data;
 
   const sectors = data.indicators.sectors;
   setHeroBanner(data.risk_score, data.prediction.label);
   setMacro(data);
-  buildGauge(data.risk_score);
   buildPrediction(data.prediction);
   buildFoundation(data.foundation_score);
   buildSectors(sectors);
-  buildTrend(sectors[selectedSec]);
   buildHF(sectors);
   buildDS(data.indicators.demand_supply);
   buildExtra(data.indicators.extended_indicators, data.indicators.derived_features, data.grounding_status?.extended_age_seconds);
+  initLearnSection(data.indicators);
+
+  // Clear skeletons first so that parent layouts settle before Chart.js is initialized
+  clearSkeletons();
+
+  // Paint the charts inside finalized containers to prevent forced reflows
+  buildGauge(data.risk_score);
+  buildTrend(sectors[selectedSec]);
   buildFeat();
   buildHist();
   initHistToggles();
-  initLearnSection(data.indicators);
 
-   // Hide loader here
+  // Hide loader
   clearInterval(loadingInterval);
-document.getElementById("loader").style.display = "none";
+  document.getElementById("loader").style.display = "none";
 }
 
 refreshAll();
@@ -634,10 +710,30 @@ refreshAll();
 //  HISTORICAL SHOCK OVERLAY
 // ═══════════════════════════════════════════
 // Compares today's live numbers against what the SAME trained model output
-// for two real historical quarters, pulled from /api/shock-scenario/<key>
+// for real historical quarters, pulled from /api/shock-scenario/<key>
 // (which reads straight out of training_data_v2.csv and runs model.pkl on
 // it server-side -- this is real model inference, not a canned demo value).
-const SHOCK_KEYS = ['live', 'slowdown_2019', 'covid_2020'];
+// Keep this list and HISTORICAL_SHOCKS in app.py in sync -- add a scenario
+// here (chronological order) and it just appears as a new button.
+const SHOCK_SCENARIOS = [
+  { key: 'live',                    label: 'Today (Live)' },
+  { key: 'demonetization_2016',     label: 'Demonetization' },
+  { key: 'ilfs_2018',               label: 'NBFC Crisis' },
+  { key: 'slowdown_2019',           label: '2019 Slowdown' },
+  { key: 'covid_2020',              label: 'COVID-19 Shock' },
+  { key: 'covid_second_wave_2021',  label: 'COVID 2nd Wave' },
+  { key: 'inflation_shock_2022',    label: '2022 Inflation Shock' },
+];
+const SHOCK_KEYS = SHOCK_SCENARIOS.map(s => s.key);
+
+function renderShockButtons() {
+  const row = document.getElementById('shock-btn-row');
+  if (!row) return;
+  row.innerHTML = SHOCK_SCENARIOS.map(s =>
+    `<button class="shock-btn${s.key === 'live' ? ' active' : ''}" id="shock-btn-${s.key}" onclick="loadShock('${s.key}')">${s.label}</button>`
+  ).join('');
+}
+renderShockButtons();
 
 function setActiveShockBtn(key) {
   SHOCK_KEYS.forEach(k => {
@@ -716,10 +812,13 @@ async function loadShock(key) {
         <div class="shock-panel-label" style="color:${scoreColor(shockRow.score)}">${shockRow.predLabel}</div>
       </div>
     </div>
-    <table class="shock-table">
-      <thead><tr><th>Indicator</th><th>Today</th><th>${scenario.label}</th><th>Δ</th></tr></thead>
-      <tbody>${tableRows}</tbody>
-    </table>
+    <div class="shock-table-wrap">
+      <table class="shock-table">
+        <thead><tr><th>Indicator</th><th>Today</th><th>${scenario.label}</th><th>Δ</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+    ${scenario.note ? `<div class="shock-note">⚠ ${scenario.note}</div>` : ''}
     <div class="shock-footnote">Historical figures are pulled directly from the same 52-quarter training_data_v2.csv the model was fit on (real quarter: ${scenario.quarter}, originally labeled "${scenario.dataset_label}"). The model's Warning/Slowdown output above is real inference run against that quarter, not a hand-picked demo number.</div>
   `;
 }
@@ -1041,6 +1140,8 @@ function saveChatHistory() {
   try { sessionStorage.setItem('chat_history', JSON.stringify(CHAT_HISTORY.slice(-20))); } catch {}
 }
 
+
+
 // ── Cached answers for suggested questions (zero API calls) ──────────────────
 const CACHED_ANSWERS = {
   "Why does my EMI go up when the repo rate rises?":
@@ -1062,16 +1163,145 @@ const CACHED_ANSWERS = {
     "FIIs (Foreign Institutional Investors) — big global funds like Blackrock, Vanguard — hold a significant chunk of Indian stocks. When they sell and pull money out: (1) Direct impact — selling pressure pushes stock prices down; (2) Rupee weakens — they convert rupees to dollars when leaving; (3) Sentiment effect — other investors panic-sell seeing FII outflows; (4) Liquidity tightens — less money in the market. FII outflow of ₹10,000+ Cr in a month is a warning sign. However, strong domestic investors (DIIs — mutual funds, LIC) now often absorb FII selling, making Indian markets more resilient than before."
 };
 
+// ═══════════════════════════════════════════
+//  SUGGESTION CHIPS -- randomized static bank + live dynamic chips
+// ═══════════════════════════════════════════
+// The 8 evergreen questions above (CACHED_ANSWERS keys) are the static bank.
+// Instead of showing all 8 at once (visually heavy), each page load shows a
+// shuffled sample of them, mixed with 1-2 chips generated from *today's*
+// live numbers -- so the panel always has something that reflects what's
+// actually on the dashboard right now, without needing any extra API call
+// (all built client-side from window._cachedData).
+const STATIC_SUGGESTIONS = Object.keys(CACHED_ANSWERS);
+
+function shuffleArr(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function buildDynamicChips(cached) {
+  if (!cached) return [];
+  const ind = cached.indicators || {};
+  const fs = cached.foundation_score;
+  const chips = [];
+
+  if (fs && fs.red_zone && fs.red_zone.length) {
+    const worst = fs.red_zone[0];
+    chips.push(`Why is the Foundation Score ${fs.red_zone.length}/${fs.checked} today?`);
+    chips.push(`Why is ${worst.label} at ${worst.value} a warning sign?`);
+  }
+  if (ind.pmi != null) chips.push(`What does a Manufacturing PMI of ${ind.pmi} tell us?`);
+  if (ind.cpi != null) chips.push(`Is ${ind.cpi}% CPI inflation good or bad for India right now?`);
+  if (ind.repo_rate != null) chips.push(`How does today's ${ind.repo_rate}% repo rate affect my EMI?`);
+  if (ind.export_growth != null) chips.push(`What's behind ${ind.export_growth}% export growth today?`);
+  if (ind.unemployment != null) chips.push(`What does ${ind.unemployment}% unemployment mean right now?`);
+
+  return chips;
+}
+
+function renderSuggestionChips() {
+  const row = document.getElementById('suggest-row');
+  if (!row) return;
+
+  const dynamic = shuffleArr(buildDynamicChips(window._cachedData)).slice(0, 2);
+  const staticNeeded = Math.max(2, 4 - dynamic.length);
+  const staticPicks = shuffleArr(STATIC_SUGGESTIONS).slice(0, staticNeeded);
+  const combined = shuffleArr([
+    ...dynamic.map(q => ({ q, dynamic: true })),
+    ...staticPicks.map(q => ({ q, dynamic: false })),
+  ]);
+
+  row.innerHTML = '';
+  combined.forEach(({ q, dynamic: isDynamic }) => {
+    const btn = document.createElement('button');
+    btn.className = 'suggest-btn' + (isDynamic ? ' dynamic' : '');
+    btn.type = 'button';
+    btn.title = isDynamic ? "Generated from today's live dashboard numbers" : '';
+    btn.textContent = q;
+    btn.addEventListener('click', () => askSuggested(btn));
+    row.appendChild(btn);
+  });
+}
+
 // ── Chatbot cooldown: 15 seconds between messages ───────────────────────────
 let _chatCooldownUntil = 0;
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ═══════════════════════════════════════════
+//  "SHOW ME THE DATA" TOOLTIPS
+// ═══════════════════════════════════════════
+// When the AI's answer mentions a tracked metric by name, turn that phrase
+// into a hover target showing today's live value -- so "Manufacturing PMI"
+// in the AI's prose is backed by the actual number on the dashboard above it.
+const METRIC_DEFS = [
+  { pattern: 'manufacturing pmi',        key: 'pmi',                          unit: '' },
+  { pattern: 'pmi',                      key: 'pmi',                          unit: '' },
+  { pattern: 'cpi inflation',            key: 'cpi',                          unit: '%' },
+  { pattern: 'wpi inflation',            key: 'ds:supply:wpi_inflation',      unit: '%' },
+  { pattern: 'gdp growth',               key: 'gdp_growth',                   unit: '%' },
+  { pattern: 'repo rate',                key: 'repo_rate',                    unit: '%' },
+  { pattern: 'unemployment rate',        key: 'unemployment',                 unit: '%' },
+  { pattern: 'unemployment',             key: 'unemployment',                 unit: '%' },
+  { pattern: 'export growth',            key: 'export_growth',                unit: '%' },
+  { pattern: 'core sector growth',       key: 'ds:supply:core_sector_growth', unit: '%' },
+  { pattern: 'capacity utilization',     key: 'ds:supply:capacity_util',      unit: '%' },
+  { pattern: 'capacity utilisation',     key: 'ds:supply:capacity_util',      unit: '%' },
+  { pattern: 'corporate earnings',       key: 'ds:supply:corporate_earnings', unit: '%' },
+  { pattern: 'private consumption',      key: 'ds:demand:pfce_growth',        unit: '%' },
+  { pattern: 'foundation score',         key: '__foundation__',               unit: '' },
+  { pattern: 'inr/usd',                  key: 'inr_usd',                      unit: '' },
+  { pattern: 'inr-usd',                  key: 'inr_usd',                      unit: '' },
+].sort((a, b) => b.pattern.length - a.pattern.length); // longest phrase wins ("manufacturing pmi" before "pmi")
+
+function getLiveMetricValue(key, cached) {
+  if (!cached) return null;
+  if (key === '__foundation__') {
+    const fs = cached.foundation_score;
+    return fs ? `${fs.red_zone.length}/${fs.checked} indicators in a red zone` : null;
+  }
+  if (key.startsWith('ds:')) {
+    const [, side, field] = key.split(':');
+    const v = cached.indicators?.demand_supply?.[side]?.[field]?.value;
+    return v == null ? null : v;
+  }
+  return cached.indicators?.[key] ?? null;
+}
+
+function linkifyMetrics(rawText) {
+  const escaped = escapeHtml(rawText);
+  const cached = window._cachedData;
+  if (!cached) return escaped;
+
+  const escapedPatterns = METRIC_DEFS.map(d => d.pattern.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'));
+  const master = new RegExp('\\b(' + escapedPatterns.join('|') + ')\\b', 'gi');
+
+  return escaped.replace(master, (match) => {
+    const lower = match.toLowerCase();
+    const def = METRIC_DEFS.find(d => d.pattern === lower);
+    if (!def) return match;
+    const val = getLiveMetricValue(def.key, cached);
+    if (val == null) return match;
+    return `<span class="metric-tip" title="Live value right now: ${val}${def.unit}">${match}</span>`;
+  });
+}
 
 function appendMsg(text, role) {
   const box = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = `chat-msg ${role==='user'?'user-msg':'bot-msg'}`;
+  const bubbleHtml = role === 'user' ? escapeHtml(text) : linkifyMetrics(text);
   div.innerHTML = `
     <div class="msg-avatar">${role==='user'?'<img src="/static/img/user-avatar.svg" alt="You" width="32" height="32">':'<img src="/static/img/bot-avatar.svg" alt="AI assistant" width="32" height="32">'}</div>
-    <div class="msg-bubble">${text}</div>`;
+    <div class="msg-bubble">${bubbleHtml}</div>`;
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
   return div;
@@ -1090,9 +1320,34 @@ function showTyping() {
 
 function removeTyping() { document.getElementById('typing-indicator')?.remove(); }
 
+function buildDashboardContext() {
+  // Built entirely from data already sitting in window._cachedData -- zero
+  // extra network calls. Sent to the backend so it can answer questions
+  // like "why is the Foundation Score 4/12 today?" using the real numbers
+  // that are on screen right now.
+  const cached = window._cachedData;
+  if (!cached) return null;
+  const ind = cached.indicators || {};
+  const fs = cached.foundation_score;
+  return {
+    risk_score: cached.risk_score,
+    prediction_label: cached.prediction?.label,
+    foundation_red_zone_count: fs?.red_zone?.length,
+    foundation_checked: fs?.checked,
+    foundation_red_zone: (fs?.red_zone || []).slice(0, 12).map(r => ({ label: r.label, value: r.value })),
+    gdp_growth: ind.gdp_growth,
+    cpi: ind.cpi,
+    pmi: ind.pmi,
+    export_growth: ind.export_growth,
+    repo_rate: ind.repo_rate,
+    unemployment: ind.unemployment,
+    inr_usd: ind.inr_usd,
+  };
+}
+
 async function sendToGemini(question) {
   try {
-    const res  = await fetch('/api/learn', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({question, history: CHAT_HISTORY.slice(-6)}) });
+    const res  = await fetch('/api/learn', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({question, history: CHAT_HISTORY.slice(-6), context: buildDashboardContext()}) });
     const data = await res.json();
     return data.answer || 'Sorry, I could not generate an answer right now. Please try again.';
   } catch { return 'Network error — could not reach the server. Please refresh and try again.'; }
@@ -1161,6 +1416,7 @@ function initLearnSection(indicators) {
   renderDefCards();
   initLearnTabs();
   initLearnSearch();
+  renderSuggestionChips();
   // Restore chat history from session
   if (CHAT_HISTORY.length > 0) {
     const box = document.getElementById('chat-messages');

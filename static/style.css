@@ -20,7 +20,7 @@
   --surface:  #FFFFFF;
   --border:   rgba(0,0,0,0.07);
   --text:     #0F172A;
-  --muted:    #64748B;
+  --muted:    #475569;
   --radius:   14px;
   --shadow:   0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
 
@@ -34,7 +34,7 @@
   --red:        #DC2626;
   --red-bg:     #FEF2F2;
   --red-border: #FECACA;
-  --blue:       #2563EB;
+  --blue:       #1D4ED8;
   --blue-bg:    #EFF6FF;
   --blue-border:#BFDBFE;
 
@@ -55,40 +55,111 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }
+a {
+  color: var(--blue);
+  text-decoration: underline;
+}
+a:hover {
+  color: #1e3a8a;
+}
 
 /* ════════════════════════════════════════════
    LOADER
 ════════════════════════════════════════════ */
+/* Non-blocking loader: a slim top progress strip instead of a full-screen
+   opaque overlay. The dashboard shell (sidebar, nav, cards) renders and is
+   usable immediately; skeleton placeholders (.sk) show where live data is
+   still being fetched in the background. */
 #loader {
-  position: fixed; inset: 0;
-  background: #0B1120;
-  display: flex; align-items: center; justify-content: center;
+  position: fixed; top: 0; left: 0; right: 0;
+  height: 3px;
+  background: transparent;
   z-index: 9999;
-  flex-direction: column;
-  gap: 0;
+  pointer-events: none;
+  overflow: hidden;
 }
-.loader-inner { display: flex; flex-direction: column; align-items: center; gap: 0; }
-.loader-logo {
-  width: 52px; height: 52px; border-radius: 14px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 18px; font-weight: 800; color: #fff;
-  margin-bottom: 20px;
+#loader::before {
+  content: "";
+  position: absolute; top: 0; left: 0; height: 100%; width: 40%;
+  background: linear-gradient(90deg, transparent, #3B82F6, transparent);
+  animation: sk-progress 1.1s ease-in-out infinite;
 }
-.loader-ring {
-  width: 52px; height: 52px; border-radius: 50%;
-  border: 3px solid rgba(59,130,246,.15);
-  position: relative; margin-bottom: 20px;
+#loader.done { display: none; }
+/* Old full-screen loader markup (logo/spinner/copy) is no longer shown —
+   the slim top strip above plus .sk skeleton placeholders replace it. */
+.loader-inner, .loader-logo, .loader-ring, .loader-arc, #loading-text, #loading-note {
+  display: none !important;
 }
-.loader-arc {
-  position: absolute; inset: -3px;
-  border: 3px solid transparent;
-  border-top-color: #3B82F6;
-  border-radius: 50%;
-  animation: spin .8s linear infinite;
+@keyframes sk-progress {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
 }
-@keyframes spin { to { transform: rotate(360deg); } }
-#loading-text  { font-size: 15px; font-weight: 500; color: #E2E8F0; text-align: center; margin-bottom: 6px; }
-#loading-note  { font-size: 12px; color: #475569; text-align: center; max-width: 260px; line-height: 1.5; }
+
+/* ════════════════════════════════════════════
+   SKELETON LOADER
+   Shown on data placeholders while /api/predict is
+   in flight (fetched in the background), so the
+   dashboard shell is interactive immediately instead
+   of freezing behind a full-screen loader.
+════════════════════════════════════════════ */
+.sk {
+  position: relative;
+  color: transparent !important;
+  border-radius: 5px;
+  min-width: 34px;
+  display: inline-block;
+  overflow: hidden;
+  background: rgba(148,163,184,.22);
+  will-change: transform;
+}
+.sk::after {
+  content: "";
+  position: absolute; inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+  animation: sk-sweep 1.4s ease-in-out infinite;
+  will-change: transform;
+}
+/* Sidebar sits on a dark background — use a lighter shimmer there */
+.sidebar .sk {
+  background: rgba(255,255,255,.10);
+}
+@keyframes sk-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+/* Once real data lands, JS removes the .sk class and this rule no longer applies */
+@media (prefers-reduced-motion: reduce) {
+  .sk::after { animation: none; }
+}
+
+/* Chart canvases (gauge / trend / feature-importance / history) start
+   completely empty — Chart.js only paints into them once data arrives.
+   An empty <canvas> is not an LCP candidate, so without a placeholder the
+   browser has nothing meaningful to report as "painted" in that (large)
+   area until the chart finally renders, which can make Largest Contentful
+   Paint look like it's still waiting on the API. Giving each chart area a
+   shimmering placeholder box means something visually substantial paints
+   immediately; JS hides the overlay once the real chart is drawn. */
+.chart-sk {
+  position: absolute; inset: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(148,163,184,.16);
+}
+.chart-sk::after {
+  content: "";
+  position: absolute; inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.30), transparent);
+  animation: sk-sweep 1.4s ease-in-out infinite;
+  will-change: transform;
+}
+.chart-sk.chart-sk-round { border-radius: 50%; }
+.chart-sk.chart-sk-hidden { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .chart-sk::after { animation: none; }
+}
 
 /* ════════════════════════════════════════════
    APP SHELL
@@ -130,7 +201,7 @@ body {
   flex-shrink: 0;
 }
 .sb-brand-title { font-size: 13px; font-weight: 700; color: #F1F5F9; line-height: 1.3; }
-.sb-brand-sub   { font-size: 10px; color: #475569; margin-top: 1px; }
+.sb-brand-sub   { font-size: 10px; color: #94A3B8; margin-top: 1px; }
 
 /* Status block */
 .sb-status-wrap {
@@ -161,17 +232,20 @@ body {
   font-size: 38px; font-weight: 700; color: #F59E0B;
   line-height: 1; letter-spacing: -.02em;
 }
-.sb-score-label { font-size: 10px; color: #475569; text-transform: uppercase; letter-spacing: .06em; margin: 3px 0 8px; }
+.sb-score-label { font-size: 10px; color: #94A3B8; text-transform: uppercase; letter-spacing: .06em; margin: 3px 0 8px; }
 .sb-score-bar {
   height: 4px; border-radius: 2px;
   background: rgba(255,255,255,.08);
   overflow: hidden;
 }
 .sb-score-fill {
-  height: 100%; width: 0%;
+  height: 100%; width: 100%;
   background: linear-gradient(90deg, #22C55E 0%, #F59E0B 55%, #EF4444 100%);
   border-radius: 2px;
-  transition: width .8s ease;
+  transform: scaleX(0);
+  transform-origin: left center;
+  will-change: transform;
+  transition: transform .8s ease;
 }
 
 /* Nav */
@@ -201,8 +275,8 @@ body {
   border-top: 1px solid var(--sb-border);
   flex-shrink: 0;
 }
-.sb-update-label { font-size: 10px; color: #334155; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
-.sb-update-val   { font-size: 11px; color: #64748B; }
+.sb-update-label { font-size: 10px; color: #94A3B8; text-transform: uppercase; letter-spacing: .06em; margin-bottom: 3px; }
+.sb-update-val   { font-size: 11px; color: #CBD5E1; }
 
 /* Collapsed sidebar */
 .app-shell.sb-collapsed .sidebar { transform: translateX(calc(-1 * var(--sb-width))); }
@@ -320,6 +394,7 @@ body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 10px;
+  min-height: 92px;
 }
 @media(max-width:900px) { .ds-grid { grid-template-columns: repeat(2,1fr); } }
 @media(max-width:480px) { .ds-grid { grid-template-columns: 1fr; } }
@@ -428,7 +503,7 @@ body {
 /* ════════════════════════════════════════════
    HF GRID
 ════════════════════════════════════════════ */
-.hf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0; }
+.hf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0; min-height: 180px; }
 .hf-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); font-size: 13px; gap: 12px; }
 .hf-item:last-child { border-bottom: none; }
 .hf-lbl  { color: var(--muted); flex: 1; min-width: 0; }
@@ -437,7 +512,7 @@ body {
 /* ════════════════════════════════════════════
    EXTRA GRID
 ════════════════════════════════════════════ */
-.extra-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 8px; }
+.extra-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 8px; min-height: 90px; }
 .extra-card { border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 12px; }
 .extra-name { font-size: 10.5px; color: var(--muted); margin-bottom: 4px; line-height: 1.3; }
 .extra-val  { font-family: var(--font-mono); font-size: 16px; font-weight: 700; }
@@ -446,11 +521,10 @@ body {
 .extra-sub.flag-good { color: var(--green); font-weight: 600; }
 .extra-fetched-via-ai {
   font-size: 9px;
-  color: var(--accent-blue, #3B82F6);
+  color: var(--muted);
   margin-top: 6px;
   padding-top: 6px;
   border-top: 1px dashed var(--border);
-  opacity: .75;
 }
 
 /* ════════════════════════════════════════════
@@ -458,10 +532,10 @@ body {
 ════════════════════════════════════════════ */
 .src-badge-wrap { margin-top: 4px; }
 .src-badge     { font-size: 10px; padding: 1px 6px; border-radius: 999px; font-weight: 600; white-space: nowrap; cursor: help; }
-.src-live      { background: #DCFCE7; color: #16A34A; }
-.src-ai        { background: #DBEAFE; color: #2563EB; }
+.src-live      { background: #DCFCE7; color: #15803D; }
+.src-ai        { background: #DBEAFE; color: #1D4ED8; }
 .src-manual    { background: #FEF3C7; color: #B45309; }
-.src-quarterly { background: #F3F4F6; color: #6B7280; }
+.src-quarterly { background: #F3F4F6; color: #4B5563; }
 
 /* ════════════════════════════════════════════
    HISTORICAL TOGGLES
@@ -512,7 +586,7 @@ body {
 .def-card.expanded .def-example { display: block; }
 .def-footer  { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; }
 .def-source  { font-size: 10px; color: var(--muted); }
-.def-source a { color: var(--blue); text-decoration: none; }
+.def-source a { color: var(--blue); text-decoration: underline; }
 .def-toggle  { font-size: 11px; color: var(--blue); background: none; border: none; cursor: pointer; padding: 0; font-weight: 500; }
 .def-current { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 8px; background: var(--blue-bg); color: var(--blue); margin-top: 6px; }
 
@@ -521,7 +595,7 @@ body {
 .ask-title   { font-size: 15px; font-weight: 700; color: var(--text); }
 .ask-sub     { font-size: 12px; color: var(--muted); margin-top: 2px; }
 .suggest-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-.suggest-btn { font-size: 12px; padding: 6px 12px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; transition: all .15s; text-align: left; }
+.suggest-btn { font-size: 12px; padding: 6px 12px; border-radius: 16px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; transition: all .15s; text-align: left; max-width: 100%; white-space: normal; }
 .suggest-btn:hover { background: var(--blue-bg); border-color: var(--blue); color: var(--blue); }
 .chat-messages { display: flex; flex-direction: column; gap: 12px; max-height: 360px; overflow-y: auto; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 12px; scroll-behavior: smooth; }
 .chat-msg  { display: flex; gap: 10px; align-items: flex-start; }
@@ -584,7 +658,7 @@ body {
   .sidebar { transform: translateX(calc(-1 * var(--sb-width))); transition: transform .25s ease; }
   .sidebar.open { transform: translateX(0); }
   .main-content { margin-left: 0; }
-  .content-inner { padding: 16px; }
+  .content-inner { padding: 12px; gap: 16px; }
   .learn-header { flex-direction: column; }
   .learn-search-wrap { flex: 1 1 100%; }
   .def-grid { grid-template-columns: 1fr; padding: 12px; }
@@ -592,7 +666,54 @@ body {
   .chat-messages { max-height: 260px; }
   .tab-row { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap !important; }
   .tab-row::-webkit-scrollbar { display: none; }
+
+  /* Topbar: let it wrap to two rows instead of clipping content, and
+     shrink/truncate the title so buttons always have room. */
+  .topbar { height: auto; min-height: var(--topbar-h); flex-wrap: wrap; padding: 8px 12px; row-gap: 8px; }
+  .topbar-title { font-size: 12.5px; max-width: 46vw; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topbar-right { flex-wrap: wrap; justify-content: flex-end; gap: 6px; row-gap: 8px; width: 100%; order: 3; }
+  .export-btn { padding: 6px 9px; }
+
+  .card { padding: 14px; }
+  .card-title { font-size: 13px; }
+
+  /* Sector Health: single column reads better than a squeeze on phones */
+  .sector-grid { grid-template-columns: 1fr; }
+
+  /* Foundation Score summary shouldn't force a fixed 220px column on narrow screens */
+  .foundation-summary { flex: 1 1 100%; }
+  .foundation-list { flex: 1 1 100%; min-width: 0; }
+  .threshold-sliders { grid-template-columns: 1fr; }
+
+  /* Bigger touch target for the threshold sliders' drag handle -- 4px tall
+     with the default thumb is fiddly to grab with a finger. */
+  .threshold-slider-item input[type="range"] { height: 20px; }
+  .threshold-slider-item input[type="range"]::-webkit-slider-thumb { width: 20px; height: 20px; }
+  .threshold-slider-item input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; }
+
+  /* iOS Safari auto-zooms the page on focusing any input under 16px --
+     bump these two text inputs up so tapping them doesn't jolt the layout. */
+  .chat-input, .learn-search { font-size: 16px; }
+
+  /* Historical Shock Overlay: scrollable table instead of squeezed columns */
+  .shock-table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .shock-table { min-width: 480px; }
+  .shock-compare-grid { grid-template-columns: 1fr; }
+
+  /* Model methodology modal: fit small viewports */
+  .modal-box { max-height: 92vh; }
+  .modal-body { padding: 16px; gap: 18px; }
+  .modal-accuracy-row { flex-direction: column; }
 }
+
+@media(max-width:420px) {
+  .topbar-title { display: none; }
+  .export-btn-label { display: none; }
+  .export-btn { padding: 7px; }
+  .macro-strip { grid-template-columns: 1fr 1fr; }
+  .shock-btn { padding: 6px 12px; font-size: 11.5px; }
+}
+
 
 /* ════════════════════════════════════════════
    PHASE 2 — EXPORT BUTTONS (topbar)
@@ -634,8 +755,41 @@ body {
 .threshold-slider-item input[type="range"] {
   width: 100%; accent-color: var(--blue); cursor: pointer; height: 4px;
 }
+.threshold-slider-item input[type="range"]:disabled { opacity: .5; cursor: wait; }
 .threshold-slider-item.dirty .threshold-slider-val { color: var(--amber); }
 .threshold-recompute-note { font-size: 10.5px; color: var(--muted); font-style: italic; }
+
+/* Spinner shown while /api/foundation-score/recompute is in flight, so
+   dragging a slider never *looks* like it silently did nothing. */
+.threshold-sliders-wrap { position: relative; }
+.threshold-loading-overlay {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.6); border-radius: 8px;
+  opacity: 0; pointer-events: none; transition: opacity .12s ease;
+  z-index: 5;
+}
+.threshold-loading-overlay.active { opacity: 1; pointer-events: all; }
+.spinner {
+  width: 22px; height: 22px; border-radius: 50%;
+  border: 3px solid var(--border); border-top-color: var(--blue);
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Mobile sidebar backdrop -- dims the page behind the sidebar when it's
+   pulled open on a phone, and can be tapped to close it. Hidden entirely
+   on desktop where the sidebar doesn't overlay content. */
+.sidebar-backdrop { display: none; }
+@media(max-width:768px) {
+  .sidebar-backdrop {
+    display: block; position: fixed; inset: 0;
+    background: rgba(15,23,42,.45);
+    z-index: 150; /* below .sidebar's z-index:200, above main content */
+    opacity: 0; pointer-events: none; transition: opacity .25s ease;
+  }
+  .sidebar-backdrop.show { opacity: 1; pointer-events: all; }
+}
 
 /* ════════════════════════════════════════════
    PHASE 2 — HISTORICAL SHOCK OVERLAY
@@ -668,6 +822,7 @@ body {
 .shock-delta-worse { color: var(--red); font-weight: 700; }
 .shock-delta-better { color: var(--green); font-weight: 700; }
 .shock-footnote { font-size: 10.5px; color: var(--muted); margin-top: 10px; line-height: 1.5; }
+.shock-note { font-size: 11.5px; color: var(--amber); background: var(--amber-bg, rgba(217,119,6,.08)); border: 1px solid var(--amber-border, rgba(217,119,6,.25)); border-radius: 8px; padding: 8px 12px; margin-top: 10px; line-height: 1.5; }
 
 /* ════════════════════════════════════════════
    PHASE 2 — MODEL METHODOLOGY MODAL
@@ -693,6 +848,17 @@ body {
 .modal-accuracy-num { font-family: var(--font-mono); font-size: 24px; font-weight: 800; color: var(--blue); }
 .modal-accuracy-label { font-size: 11px; color: var(--muted); margin-top: 4px; }
 
+/* ════════════════════════════════════════════
+   PHASE 2.1 — DYNAMIC SUGGESTION CHIPS & METRIC TOOLTIPS
+════════════════════════════════════════════ */
+.suggest-btn.dynamic { border-color: var(--blue-border); background: var(--blue-bg); color: var(--blue); }
+.suggest-btn.dynamic::before { content: '● '; font-size: 8px; vertical-align: middle; }
+.suggest-btn.dynamic:hover { background: var(--blue); color: #fff; }
+
+.metric-tip {
+  border-bottom: 1.5px dotted var(--blue);
+  cursor: help;
+}
 /* ════════════════════════════════════════════
    PRINT — Export Report
 ════════════════════════════════════════════ */

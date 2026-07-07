@@ -733,33 +733,13 @@ def get_grounding_status():
     """Lightweight status info for the frontend's 'Last refreshed X min ago'
     badge -- how old is each cache right now, in seconds. Returns None for a
     timestamp if that cache has never been successfully populated.
-    Always checks Redis first so Vercel cold-start containers report the
-    correct age instead of always showing 'Not yet fetched'."""
+    Uses in-memory values to guarantee zero blocking on database requests."""
     now = time.time()
 
     # In-memory ts (warm container, same process).
     # Use None sentinel — ts==0 means "never fetched", NOT a valid timestamp.
     g_ts = _cache.get("ts") or None      # converts 0 → None
     e_ts = _extended_cache.get("ts") or None
-
-    # If in-memory is empty (cold start / new container), read ts from Redis.
-    if g_ts is None or e_ts is None:
-        try:
-            saved = _redis_get()
-            if saved:
-                if g_ts is None:
-                    raw = saved.get("grounding", {}).get("ts")
-                    # Accept only a real timestamp (float > 0), not the
-                    # initial 0 sentinel that _save_disk_cache may have persisted
-                    # before the first successful Gemini fetch.
-                    if raw and float(raw) > 0:
-                        g_ts = float(raw)
-                if e_ts is None:
-                    raw = saved.get("extended", {}).get("ts")
-                    if raw and float(raw) > 0:
-                        e_ts = float(raw)
-        except Exception:
-            pass
 
     return {
         "grounding_age_seconds": int(now - g_ts) if g_ts else None,

@@ -7,6 +7,8 @@ import os
 import sys
 import json
 import joblib
+import gzip
+import io
 import numpy as np
 import pandas as pd
 from flask import Flask, jsonify, render_template, request
@@ -27,6 +29,33 @@ from data.gemini_grounding import (
 
 app = Flask(__name__)
 CORS(app)
+
+
+@app.after_request
+def compress(response):
+    """Gzip-compress all text, javascript, json, and svg responses to reduce payload sizes."""
+    accept_encoding = request.headers.get('Accept-Encoding', '')
+    if 'gzip' not in accept_encoding.lower() or response.status_code not in range(200, 300):
+        return response
+    if 'Content-Encoding' in response.headers:
+        return response
+
+    content_type = response.headers.get('Content-Type', '')
+    mime_types = ['text/', 'application/javascript', 'application/json', 'image/svg+xml', 'application/xml']
+    if not any(t in content_type for t in mime_types):
+        return response
+
+    if response.direct_passthrough:
+        response.direct_passthrough = False
+
+    buffer = io.BytesIO()
+    with gzip.GzipFile(mode='wb', fileobj=buffer) as f:
+        f.write(response.get_data())
+
+    response.set_data(buffer.getvalue())
+    response.headers['Content-Encoding'] = 'gzip'
+    response.headers['Content-Length'] = len(response.get_data())
+    return response
 
 # Load ML model (train first if missing)
 MODEL_PATH = os.path.join(os.path.dirname(__file__), "model", "model.pkl")
@@ -281,6 +310,16 @@ def api_predict():
 # was fit on (not hand-typed guesses). This is what validates the model:
 # feeding it a known-bad quarter and confirming it flags it as such.
 HISTORICAL_SHOCKS = {
+    "demonetization_2016": {
+        "quarter": "Q3_FY2017",
+        "label": "Demonetization",
+        "period": "Oct–Dec 2016 (Q3 FY17)",
+    },
+    "ilfs_2018": {
+        "quarter": "Q3_FY2019",
+        "label": "NBFC / IL&FS Crisis",
+        "period": "Oct–Dec 2018 (Q3 FY19)",
+    },
     "slowdown_2019": {
         "quarter": "Q2_FY2020",
         "label": "2019 Slowdown",
@@ -290,6 +329,17 @@ HISTORICAL_SHOCKS = {
         "quarter": "Q1_FY2021",
         "label": "COVID-19 Shock",
         "period": "Apr–Jun 2020 (Q1 FY21)",
+    },
+    "covid_second_wave_2021": {
+        "quarter": "Q1_FY2022",
+        "label": "COVID Second Wave",
+        "period": "Apr–Jun 2021 (Q1 FY22)",
+        "note": "This was India's deadliest COVID wave on the ground, yet YoY GDP growth reads +22.6% here because it's compared against the collapsed base of Q1 FY21 -- a real limitation of YoY-based indicators, not a sign the model 'missed' anything.",
+    },
+    "inflation_shock_2022": {
+        "quarter": "Q1_FY2023",
+        "label": "2022 Inflation Shock",
+        "period": "Apr–Jun 2022 (Q1 FY23)",
     },
 }
 
@@ -356,6 +406,7 @@ def api_shock_scenario(key):
         "quarter": cfg["quarter"],
         "label": cfg["label"],
         "period": cfg["period"],
+        "note": cfg.get("note"),
         "dataset_label": row.get("label"),  # the label this quarter was trained with
         "indicators": {
             "gdp_growth":    round(float(row["gdp_growth"]), 2),
@@ -467,6 +518,7 @@ def api_learn():
     payload  = request.get_json(silent=True) or {}
     question = (payload.get("question") or "").strip()
     history  = payload.get("history", [])  # last few turns for context
+    context  = payload.get("context") or {}  # today's live dashboard snapshot, from the client
 
     if not question:
         return jsonify({"answer": "I didn't catch a question there. Please type something."}), 200
@@ -474,8 +526,45 @@ def api_learn():
     if len(question) > 500:
         return jsonify({"answer": "Could you shorten your question a little, please?"}), 200
 
+    def _num(v):
+        try: return round(float(v), 2)
+        except (TypeError, ValueError): return None
+
+    # Build a compact, trusted snapshot line from client-supplied context.
+    # Only known numeric/string fields are read (never passed through
+    # verbatim), so a tampered payload can't inject arbitrary prompt text.
+    dashboard_block = ""
+    if context:
+        red_zone = context.get("foundation_red_zone") or []
+        red_zone_lines = "; ".join(
+            f"{item.get('label')} at {_num(item.get('value'))}"
+            for item in red_zone[:12] if isinstance(item, dict) and item.get("label") is not None
+        )
+        parts = []
+        rs, pl = context.get("risk_score"), context.get("prediction_label")
+        if rs is not None and isinstance(pl, str):
+            parts.append(f"- ML Model risk score: {_num(rs)}/100 ({pl[:40]})")
+        fz, fc = context.get("foundation_red_zone_count"), context.get("foundation_checked")
+        if fz is not None and fc is not None:
+            line = f"- Foundation Score: {fz}/{fc} indicators currently in a red/weak zone"
+            if red_zone_lines:
+                line += f" ({red_zone_lines})"
+            parts.append(line)
+        field_labels = [
+            ("gdp_growth", "GDP Growth", "%"), ("cpi", "CPI Inflation", "%"),
+            ("pmi", "Manufacturing PMI", ""), ("export_growth", "Export Growth", "%"),
+            ("repo_rate", "Repo Rate", "%"), ("unemployment", "Unemployment", "%"),
+            ("inr_usd", "INR/USD", ""),
+        ]
+        metrics = [f"{label} {_num(context.get(key))}{unit}" for key, label, unit in field_labels if _num(context.get(key)) is not None]
+        if metrics:
+            parts.append("- " + " | ".join(metrics))
+        if parts:
+            dashboard_block = "\n\nToday's live ArthaSanket dashboard snapshot (use this if the question refers to \"today\", \"current\", \"right now\", or a specific number on the dashboard; otherwise answer generally):\n" + "\n".join(parts)
+
     try:
         from google import genai
+        from google.genai import types
 
         # Build conversation history for context
         history_text = ""
@@ -493,14 +582,14 @@ Rules:
 - Keep it concise, 3-5 sentences
 - If you're explaining a term, always include a real-life analogy
 - Keep a friendly, encouraging tone
-- This is for educational purposes only -- don't repeat the "I'm not a financial advisor" disclaimer too often{history_text}
+- This is for educational purposes only -- don't repeat the "I'm not a financial advisor" disclaimer too often{dashboard_block}{history_text}
 
 User's question: {question}
 
 Your answer:"""
 
         def _request(api_key):
-            client = genai.Client(api_key=api_key)
+            client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=12000))
             return client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,

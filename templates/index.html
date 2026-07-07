@@ -29,7 +29,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
 </head>
 <body>
 
@@ -67,7 +67,7 @@
         <span id="sb-status-label">Analyzing…</span>
       </div>
       <div class="sb-score-block">
-        <div class="sb-score-num" id="sb-score-num">—</div>
+        <div class="sk sb-score-num" id="sb-score-num">—</div>
         <div class="sb-score-label">Risk / 100</div>
         <div class="sb-score-bar"><div class="sb-score-fill" id="sb-score-fill"></div></div>
       </div>
@@ -108,10 +108,14 @@
     <!-- Update time -->
     <div class="sb-footer">
       <div class="sb-update-label">Last updated</div>
-      <div class="sb-update-val" id="last-updated">—</div>
+      <div class="sk sb-update-val" id="last-updated">—</div>
     </div>
 
   </aside>
+
+  <!-- Mobile-only dimmed backdrop shown behind the sidebar when it's open,
+       so it reads as an overlay and can be tapped to dismiss. -->
+  <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleSidebar()"></div>
 
   <!-- ── MAIN CONTENT ── -->
   <main class="main-content">
@@ -125,13 +129,13 @@
         <span class="topbar-title">ArthaSanket | India Macro Intelligence</span>
       </div>
       <div class="topbar-right">
-        <button class="export-btn" id="export-csv-btn" onclick="exportCSV()" title="Download all current indicators as a CSV file">
+        <button class="export-btn" id="export-csv-btn" onclick="exportCSV()" title="Download all current indicators as a CSV file" aria-label="Export CSV">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Export CSV
+          <span class="export-btn-label">Export CSV</span>
         </button>
-        <button class="export-btn" id="export-pdf-btn" onclick="exportReport()" title="Open a print-ready version of this dashboard (choose 'Save as PDF' in the print dialog)">
+        <button class="export-btn" id="export-pdf-btn" onclick="exportReport()" title="Open a print-ready version of this dashboard (choose 'Save as PDF' in the print dialog)" aria-label="Export Report">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-          Export Report
+          <span class="export-btn-label">Export Report</span>
         </button>
         <span class="live-dot-wrap" title="INR/USD, India VIX and other high-frequency market data refresh in real time. GDP, CPI, PMI and other macro indicators follow their official monthly/quarterly release schedule and are not live in the same sense.">
           <span class="live-dot"></span>Active Feed
@@ -148,37 +152,37 @@
         <div class="macro-strip">
           <div class="macro-item">
             <div class="macro-label">GDP Growth</div>
-            <div class="macro-val" id="m-gdp">—</div>
+            <div class="sk macro-val" id="m-gdp">—</div>
             <div class="macro-delta down">↓ from 8.2%</div>
             <div class="src-badge-wrap" id="m-gdp-src"></div>
           </div>
           <div class="macro-item">
             <div class="macro-label">CPI Inflation</div>
-            <div class="macro-val" id="m-cpi">—</div>
-            <div class="macro-delta" id="m-cpi-d">—</div>
+            <div class="sk macro-val" id="m-cpi">—</div>
+            <div class="sk macro-delta" id="m-cpi-d">—</div>
             <div class="src-badge-wrap" id="m-cpi-src"></div>
           </div>
           <div class="macro-item">
             <div class="macro-label">Repo Rate</div>
-            <div class="macro-val" id="m-repo">—</div>
+            <div class="sk macro-val" id="m-repo">—</div>
             <div class="macro-delta neutral">RBI Policy</div>
             <div class="src-badge-wrap" id="m-repo-src"></div>
           </div>
           <div class="macro-item">
             <div class="macro-label">INR / USD</div>
-            <div class="macro-val" id="m-fx">—</div>
+            <div class="sk macro-val" id="m-fx">—</div>
             <div class="macro-delta down">↑ Weakening</div>
             <div class="src-badge-wrap" id="m-fx-src"></div>
           </div>
           <div class="macro-item">
             <div class="macro-label">Exports YoY</div>
-            <div class="macro-val" id="m-exp">—</div>
-            <div class="macro-delta down" id="m-exp-d">—</div>
+            <div class="sk macro-val" id="m-exp">—</div>
+            <div class="sk macro-delta down" id="m-exp-d">—</div>
             <div class="src-badge-wrap" id="m-exp-src"></div>
           </div>
           <div class="macro-item">
             <div class="macro-label">Unemployment</div>
-            <div class="macro-val" id="m-unemp">—</div>
+            <div class="sk macro-val" id="m-unemp">—</div>
             <div class="macro-delta" id="m-unemp-d">Urban CMIE</div>
             <div class="src-badge-wrap" id="m-unemp-src"></div>
           </div>
@@ -195,12 +199,17 @@
             <div class="pred-wrap">
               <div class="gauge-box">
                 <canvas id="gaugeChart" width="180" height="110"></canvas>
-                <div class="gauge-num" id="gauge-num">—</div>
+                <div class="chart-sk chart-sk-round" id="gaugeChart-sk"></div>
+                <div class="sk gauge-num" id="gauge-num">—</div>
               </div>
               <div class="pred-info">
-                <div class="pred-pill" id="pred-pill">—</div>
-                <div class="pred-conf">Confidence: <b id="pred-conf">—</b></div>
-                <div class="prob-list" id="prob-list"></div>
+                <div class="sk pred-pill" id="pred-pill">—</div>
+                <div class="pred-conf">Confidence: <b id="pred-conf" class="sk">—</b></div>
+                <div class="prob-list" id="prob-list">
+                  <div class="prob-row"><span class="prob-lbl">Slowdown</span><div class="prob-track"><div class="prob-fill sk" style="width:100%"></div></div><span class="prob-pct sk">00%</span></div>
+                  <div class="prob-row"><span class="prob-lbl">Stable</span><div class="prob-track"><div class="prob-fill sk" style="width:100%"></div></div><span class="prob-pct sk">00%</span></div>
+                  <div class="prob-row"><span class="prob-lbl">Warning</span><div class="prob-track"><div class="prob-fill sk" style="width:100%"></div></div><span class="prob-pct sk">00%</span></div>
+                </div>
                 <div class="model-stats">
                   <div class="stat-row"><span>CV Accuracy</span><b>~80%</b></div>
 <div class="stat-row"><span>Training data</span><b>52 quarters</b></div>
@@ -215,7 +224,13 @@
               <span class="card-title">Sector Health</span>
               <span class="card-tag">Click to drill down</span>
             </div>
-            <div class="sector-grid" id="sector-grid"></div>
+            <div class="sector-grid" id="sector-grid">
+              <div class="sec-card"><div class="sec-name">Manufacturing (PMI)</div><div class="sec-val sk">00.0</div><span class="sec-badge good sk">Healthy</span></div>
+              <div class="sec-card"><div class="sec-name">Banking &amp; Finance</div><div class="sec-val sk">00.0%</div><span class="sec-badge good sk">Healthy</span></div>
+              <div class="sec-card"><div class="sec-name">Agriculture</div><div class="sec-val sk">0.0%</div><span class="sec-badge good sk">Healthy</span></div>
+              <div class="sec-card"><div class="sec-name">Trade &amp; Exports</div><div class="sec-val sk">00%</div><span class="sec-badge good sk">Healthy</span></div>
+              <div class="sec-card"><div class="sec-name">Employment &amp; Labour</div><div class="sec-val sk">0.0%</div><span class="sec-badge good sk">Healthy</span></div>
+            </div>
           </div>
 
         </div>
@@ -224,15 +239,15 @@
         <div class="card" id="section-foundation">
           <div class="card-head">
             <span class="card-title">Foundation Score</span>
-            <div style="display:flex; align-items:center; gap:8px;">
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
               <span class="card-tag">Same 18 indicators · transparent threshold check</span>
               <button class="threshold-toggle-btn" id="threshold-toggle-btn" onclick="toggleThresholdPanel()">⚙ Adjust Thresholds</button>
             </div>
           </div>
           <div class="foundation-wrap">
             <div class="foundation-summary">
-              <div class="foundation-num" id="foundation-num">—</div>
-              <div class="foundation-sub" id="foundation-sub">—</div>
+              <div class="sk foundation-num" id="foundation-num">—</div>
+              <div class="sk foundation-sub" id="foundation-sub">—</div>
               <p class="foundation-note">Unlike the ML model above (a trained ensemble forecasting next quarter), this score is a plain count of how many of the same indicators are currently past a known weak-zone threshold — no prediction, just today's snapshot, fully explainable.</p>
             </div>
             <div class="foundation-list" id="foundation-list"></div>
@@ -245,7 +260,12 @@
               </div>
               <button class="threshold-reset-btn" id="threshold-reset-btn" onclick="resetThresholds()">Reset to defaults</button>
             </div>
-            <div class="threshold-sliders" id="threshold-sliders"></div>
+            <div class="threshold-sliders-wrap">
+              <div class="threshold-sliders" id="threshold-sliders"></div>
+              <div class="threshold-loading-overlay" id="threshold-loading-overlay" aria-live="polite" aria-label="Recomputing score">
+                <div class="spinner"></div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -255,12 +275,8 @@
             <span class="card-title">Historical Shock Overlay</span>
             <span class="card-tag">Real model, run on real historical quarters</span>
           </div>
-          <p class="shock-intro">See what the same trained model actually output during India's two most-discussed slowdown episodes — pulled straight from its own training data, not re-estimated.</p>
-          <div class="shock-btn-row">
-            <button class="shock-btn active" id="shock-btn-live" onclick="loadShock('live')">Today (Live)</button>
-            <button class="shock-btn" id="shock-btn-slowdown_2019" onclick="loadShock('slowdown_2019')">2019 Slowdown</button>
-            <button class="shock-btn" id="shock-btn-covid_2020" onclick="loadShock('covid_2020')">COVID-19 Shock</button>
-          </div>
+          <p class="shock-intro">See what the same trained model actually output during India's most-discussed slowdown episodes — pulled straight from its own training data, not re-estimated.</p>
+          <div class="shock-btn-row" id="shock-btn-row"></div>
           <div class="shock-body" id="shock-body">
             <div class="shock-placeholder" id="shock-placeholder">Pick a period above to compare it against today.</div>
           </div>
@@ -360,7 +376,7 @@
             <span><i class="dot" style="background:#22C55E"></i>Avg</span>
             <span><i class="red-dash"></i>Alert threshold</span>
           </div>
-          <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+          <div class="chart-wrap"><canvas id="trendChart"></canvas><div class="chart-sk" id="trendChart-sk"></div></div>
         </div>
 
         <div class="grid-2">
@@ -370,7 +386,7 @@
               <span class="card-title">Feature Importance</span>
               <span class="card-tag">Random Forest</span>
             </div>
-            <div class="chart-wrap" style="height:210px"><canvas id="featChart"></canvas></div>
+            <div class="chart-wrap" style="height:210px"><canvas id="featChart"></canvas><div class="chart-sk" id="featChart-sk"></div></div>
           </div>
 
           <div class="card">
@@ -395,7 +411,7 @@
                 <span class="toggle-label">Unemployment (%)</span>
               </label>
             </div>
-            <div class="chart-wrap" style="height:160px"><canvas id="histChart"></canvas></div>
+            <div class="chart-wrap" style="height:160px"><canvas id="histChart"></canvas><div class="chart-sk" id="histChart-sk"></div></div>
           </div>
 
         </div>
@@ -441,16 +457,7 @@
               <div class="ask-title">Ask the AI</div>
               <div class="ask-sub">Ask anything about India's economy — in plain English</div>
             </div>
-            <div class="suggest-row" id="suggest-row">
-              <button class="suggest-btn" onclick="askSuggested(this)">Why does my EMI go up when the repo rate rises?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">What does an "economic slowdown" actually mean for India?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">What happens if PMI falls below 50?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">How does inflation affect an average household?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">What are the main reasons GDP growth slows down?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">Why does the stock market fall when FIIs pull out money?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">What does Core Sector Growth of 0.5% mean for the economy?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">Why does rural wage growth matter as an economic indicator?</button>
-            </div>
+            <div class="suggest-row" id="suggest-row"></div>
             <div class="chat-messages" id="chat-messages">
               <div class="chat-msg bot-msg">
                 <div class="msg-avatar"><img src="/static/img/bot-avatar.svg" alt="AI" width="32" height="32"></div>
@@ -561,12 +568,16 @@ function sbNavigate(el) {
   // Mobile: close sidebar after nav click
   if (window.innerWidth <= 768) {
     document.querySelector('.sidebar').classList.remove('open');
+    document.getElementById('sidebar-backdrop').classList.remove('show');
   }
 }
 function toggleSidebar() {
   if (window.innerWidth <= 768) {
-    // Mobile: toggle open class on sidebar
-    document.querySelector('.sidebar').classList.toggle('open');
+    // Mobile: toggle open class on sidebar + dim backdrop behind it so it
+    // reads as an overlay (and can be tapped to dismiss) instead of content
+    // just being silently covered up.
+    const isOpen = document.querySelector('.sidebar').classList.toggle('open');
+    document.getElementById('sidebar-backdrop').classList.toggle('show', isOpen);
   } else {
     // Desktop: toggle collapsed on app-shell
     document.querySelector('.app-shell').classList.toggle('sb-collapsed');
