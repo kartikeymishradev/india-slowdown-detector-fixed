@@ -714,14 +714,20 @@ Be specific to India's current economic context. Do not use markdown headers, ju
 
 def refresh_all_grounding():
     """Force-refresh both the main grounding indicators and the extended
-    indicators by calling Gemini (respecting the burst-protection cooldown
-    and multi-key fallback chain on each). Returns a small status dict the
-    /api/refresh-grounding route can hand back to the frontend.
+    indicators concurrently by calling Gemini in parallel threads (respecting
+    the multi-key fallback chain on each). This keeps the total execution time
+    well below Vercel's 15-second Hobby plan serverless timeout limit.
 
     This never raises -- each underlying fetch already swallows its own
     exceptions and returns the last-known-good cached value on failure."""
-    grounding_result = fetch_grounded_indicators(force=True)
-    extended_result = fetch_extended_indicators(force=True)
+    from concurrent.futures import ThreadPoolExecutor
+    
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_grounding = executor.submit(fetch_grounded_indicators, force=True)
+        f_extended = executor.submit(fetch_extended_indicators, force=True)
+        grounding_result = f_grounding.result()
+        extended_result = f_extended.result()
+        
     return {
         "grounding_updated": grounding_result is not None,
         "extended_updated": extended_result is not None,
