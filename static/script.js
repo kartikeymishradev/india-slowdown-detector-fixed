@@ -1646,9 +1646,14 @@ function triggerAIRefresh() {
   const btn = document.getElementById('refresh-ai-btn');
   const statusDiv = document.getElementById('refresh-status');
   
-  btn.disabled = true;
-  statusDiv.style.color = 'var(--text)';
-  statusDiv.textContent = 'Triggering Gemini grounding... monitor console logs below.';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner"></span> Refreshing...';
+  }
+  if (statusDiv) {
+    statusDiv.style.color = 'var(--text)';
+    statusDiv.textContent = 'Triggering Gemini grounding... monitor console logs below.';
+  }
   
   logToConsole('>>> MANUAL FORCE-REFRESH TRIGGERED BY ADMIN', 'warn');
   logToConsole('[INFO] Authenticating API credentials with server...', 'info');
@@ -1677,17 +1682,24 @@ function triggerAIRefresh() {
       logToConsole('[SUCCESS] Gemini data fetch completed successfully.', 'success');
       logToConsole(`[SUCCESS] Main indicators updated: ${data.grounding_updated}`, 'success');
       logToConsole(`[SUCCESS] Extended high-frequency updated: ${data.extended_updated}`, 'success');
-      statusDiv.style.color = 'var(--green)';
-      statusDiv.textContent = 'Refresh completed successfully!';
-      refreshAll();
+      if (statusDiv) {
+        statusDiv.style.color = 'var(--green)';
+        statusDiv.textContent = 'Refresh completed successfully!';
+      }
+      alert('Grounding data refreshed successfully! Reloading page to apply updates...');
+      window.location.reload();
     })
     .catch(err => {
       logToConsole(`[ERROR] Refresh pipeline failed: ${err.message}`, 'error');
-      statusDiv.style.color = 'var(--red)';
-      statusDiv.textContent = `Failed: ${err.message}`;
-    })
-    .finally(() => {
-      btn.disabled = false;
+      if (statusDiv) {
+        statusDiv.style.color = 'var(--red)';
+        statusDiv.textContent = `Failed: ${err.message}`;
+      }
+      alert(`Refresh failed: ${err.message}`);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '🔄 Refresh AI Data';
+      }
     });
 }
 
@@ -1772,7 +1784,11 @@ function triggerModelRetrain() {
   const user = sessionStorage.getItem('admin_user') || '';
   const token = sessionStorage.getItem('admin_token') || '';
   const btn = document.getElementById('retrain-model-btn');
-  if (btn) btn.disabled = true;
+  
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner"></span> Retraining...';
+  }
 
   logToConsole('>>> ECONOMIC MODEL RETRAINING TRIGGERED BY ADMIN', 'warn');
   logToConsole('[INFO] Connecting to training pipeline subprocess...', 'info');
@@ -1811,14 +1827,15 @@ function triggerModelRetrain() {
         });
       }
       logToConsole('[SUCCESS] Model re-trained and active state refreshed in memory.', 'success');
-      alert('Model retrained successfully!');
-      refreshAll();
+      alert('Model retrained successfully! Reloading page to apply updates...');
+      window.location.reload();
     })
     .catch(err => {
       logToConsole(`[ERROR] Training failed: ${err.message}`, 'error');
       alert(`Retrain failed: ${err.message}`);
-    })
-    .finally(() => {
-      if (btn) btn.disabled = false;
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '🧠 Retrain ML Model';
+      }
     });
 }

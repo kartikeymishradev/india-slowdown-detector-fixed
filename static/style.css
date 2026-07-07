@@ -950,3 +950,20 @@ a:hover {
   color: var(--muted);
   margin-top: 2px;
 }
+
+/* Spinner animation for reloading and retraining buttons */
+@keyframes button-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.btn-spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2.2px solid currentColor;
+  border-radius: 50%;
+  border-right-color: transparent;
+  animation: button-spin 0.75s linear infinite;
+  margin-right: 6px;
+  vertical-align: middle;
+}
