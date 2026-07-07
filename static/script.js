@@ -1515,6 +1515,7 @@ function authenticateAdmin() {
   }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+    headers['X-Admin-Token'] = token;
   }
   
   const errMsg = document.getElementById('auth-error-msg');
@@ -1616,6 +1617,7 @@ function saveConfiguration() {
   }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+    headers['X-Admin-Token'] = token;
   }
   
   fetch('/api/config', {
@@ -1657,6 +1659,7 @@ function triggerAIRefresh() {
   }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+    headers['X-Admin-Token'] = token;
   }
   
   fetch('/api/refresh-grounding', {
@@ -1727,6 +1730,7 @@ function addLabeledQuarter() {
   }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+    headers['X-Admin-Token'] = token;
   }
 
   fetch('/api/admin/add-quarter', {
@@ -1779,6 +1783,7 @@ function triggerModelRetrain() {
   }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+    headers['X-Admin-Token'] = token;
   }
 
   fetch('/api/admin/retrain', {

@@ -454,10 +454,14 @@ def verify_admin_credentials():
         
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "").strip()
-    user = request.headers.get("X-Admin-User", "admin").strip()
-    expected_user = os.environ.get("ADMIN_USER", "admin").strip()
+    if not token:
+        # Fallback to custom header if WSGI gateway stripped Authorization header
+        token = request.headers.get("X-Admin-Token", "").strip()
+        
+    user = request.headers.get("X-Admin-User", "admin").strip().lower()
+    expected_user = os.environ.get("ADMIN_USER", "admin").strip().lower()
     
-    return token == admin_token and user == expected_user
+    return token == admin_token.strip() and user == expected_user
 
 
 @app.route("/api/config", methods=["GET", "POST"])
