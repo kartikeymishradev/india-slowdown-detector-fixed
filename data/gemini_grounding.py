@@ -175,6 +175,8 @@ def _redis_set(data):
             result = json.loads(r.read())
         if result.get("error"):
             print(f"⚠️  Redis SET returned error: {result['error']}")
+        else:
+            print("🟢 Redis SET succeeded: Grounding cache successfully saved to Upstash Redis")
     except Exception as e:
         print(f"⚠️  Redis SET failed: {e}")
 
@@ -401,11 +403,9 @@ def fetch_grounded_indicators(force=False):
         # manual/periodic refresh path.
         return _cache["data"]
 
-    # Cache expired (or never populated) -- but are we still inside the
-    # burst-protection cooldown since the last attempt? If so, don't call
-    # Gemini again yet. Serve stale data if we have any, else None.
-    if (now - _cache["last_attempt"]) < MIN_CALL_INTERVAL_SECONDS:
-        return _cache["data"]  # may be None on first-ever call, or stale-but-usable
+    # Only apply burst cooldown if not a manual force-refresh
+    if not force and (now - _cache["last_attempt"]) < MIN_CALL_INTERVAL_SECONDS:
+        return _cache["data"]
 
     _cache["last_attempt"] = now
 
@@ -540,7 +540,8 @@ def fetch_extended_indicators(force=False):
     if not force:
         return _extended_cache["data"]
 
-    if (now - _extended_cache["last_attempt"]) < EXTENDED_MIN_CALL_INTERVAL_SECONDS:
+    # Only apply burst cooldown if not a manual force-refresh
+    if not force and (now - _extended_cache["last_attempt"]) < EXTENDED_MIN_CALL_INTERVAL_SECONDS:
         return _extended_cache["data"]
 
     _extended_cache["last_attempt"] = now

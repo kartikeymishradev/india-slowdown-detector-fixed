@@ -18,7 +18,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 sys.path.insert(0, os.path.dirname(__file__))
-from data.fetch_data import get_all_indicators, build_feature_vector
+from data.fetch_data import get_all_indicators, build_feature_vector, load_config
 from data.gemini_grounding import (
     generate_analysis,
     _get_key_pool,
@@ -63,9 +63,40 @@ model = None
 
 def load_model():
     global model
+    
+    # 1. Try loading from Redis first
+    redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
+    redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
+    redis_key = "trained_model_v1"
+    
+    if redis_url and redis_token:
+        try:
+            import urllib.request
+            import base64
+            body = json.dumps(["GET", redis_key]).encode()
+            req = urllib.request.Request(
+                redis_url,
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {redis_token}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as r:
+                result = json.loads(r.read())
+            if result.get("result"):
+                model_bytes = base64.b64decode(result["result"].encode())
+                model = joblib.load(io.BytesIO(model_bytes))
+                print("🟢 ML model loaded successfully from Upstash Redis")
+                return
+        except Exception as e:
+            print(f"⚠️ Failed to load model from Redis: {e}")
+            
+    # 2. Fallback to local model.pkl file
     if os.path.exists(MODEL_PATH):
         model = joblib.load(MODEL_PATH)
-        print(" ML model loaded")
+        print(" ML model loaded from local file")
     else:
         print("⚠️  model.pkl not found — run: python model/train_model.py")
 
@@ -479,23 +510,58 @@ def api_config():
             if not is_local:
                 return jsonify({"error": "Unauthorized: Admin token not configured on server"}), 403
                 
-    # POST: save config.json content
+    # POST: save config overrides
     if request.method == "POST":
         payload = request.get_json(silent=True) or {}
         if not payload:
             return jsonify({"error": "Invalid request payload"}), 400
             
+        redis_saved = False
+        # Try saving to Upstash Redis
+        redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
+        redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
+        redis_key = "config_overrides_v1"
+        
+        if redis_url and redis_token:
+            try:
+                import urllib.request
+                value_str = json.dumps(payload)
+                body = json.dumps(["SET", redis_key, value_str]).encode()
+                req = urllib.request.Request(
+                    redis_url,
+                    data=body,
+                    headers={
+                        "Authorization": f"Bearer {redis_token}",
+                        "Content-Type": "application/json",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=3) as r:
+                    res_body = json.loads(r.read())
+                if not res_body.get("error"):
+                    redis_saved = True
+                    print("🟢 Configuration overrides saved to Upstash Redis")
+            except Exception as e:
+                print(f"⚠️ Failed to save config overrides to Redis: {e}")
+
+        # Try saving to local file system (local development / fallback)
+        local_saved = False
         try:
             with open(config_path, "w") as f:
                 json.dump(payload, f, indent=2)
-            return jsonify({"status": "success", "message": "Configuration updated successfully"})
+            local_saved = True
         except Exception as e:
-            return jsonify({"error": f"Failed to save configuration: {str(e)}"}), 500
+            print(f"⚠️ Failed to write config.json locally: {e}")
+
+        # Return success if either succeeded
+        if redis_saved or local_saved:
+            return jsonify({"status": "success", "message": "Configuration updated successfully"})
+        else:
+            return jsonify({"error": "Failed to save configuration: Read-only file system and Redis unavailable"}), 500
             
-    # GET: return config.json content
+    # GET: return config overrides or config.json content
     try:
-        with open(config_path, "r") as f:
-            data = json.load(f)
+        data = load_config()
         return jsonify(data)
     except Exception as e:
         return jsonify({"error": f"Failed to read configuration: {str(e)}"}), 500
@@ -509,16 +575,48 @@ def api_admin_retrain():
     import subprocess
     import sys
     import joblib
+    import tempfile
     
     try:
         script_path = os.path.join(os.path.dirname(__file__), "model", "train_model.py")
         result = subprocess.run([sys.executable, script_path], capture_output=True, text=True, cwd=os.path.dirname(__file__))
         
-        # Reload global model
-        global model
-        model_path = os.path.join(os.path.dirname(__file__), "model", "model.pkl")
-        if os.path.exists(model_path):
-            model = joblib.load(model_path)
+        # After running train_model.py successfully:
+        temp_model_path = os.path.join(tempfile.gettempdir(), 'model_temp.pkl')
+        if os.path.exists(temp_model_path):
+            with open(temp_model_path, 'rb') as f:
+                model_bytes = f.read()
+            
+            redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
+            redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
+            redis_key = "trained_model_v1"
+            
+            if redis_url and redis_token:
+                try:
+                    import base64
+                    import urllib.request
+                    encoded_model = base64.b64encode(model_bytes).decode('utf-8')
+                    body = json.dumps(["SET", redis_key, encoded_model]).encode()
+                    req = urllib.request.Request(
+                        redis_url,
+                        data=body,
+                        headers={
+                            "Authorization": f"Bearer {redis_token}",
+                            "Content-Type": "application/json",
+                        },
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req, timeout=10) as r:
+                        res_body = json.loads(r.read())
+                    if not res_body.get("error"):
+                        print("🟢 Retrained model uploaded to Upstash Redis successfully!")
+                except Exception as e:
+                    print(f"⚠️ Failed to upload retrained model to Redis: {e}")
+            
+            # Reload global model in memory
+            global model
+            model = joblib.load(io.BytesIO(model_bytes))
+            print("🟢 In-memory model reloaded from temp model bytes")
             
         return jsonify({
             "status": "success",
@@ -550,36 +648,104 @@ def api_admin_add_quarter():
         if f not in payload:
             return jsonify({"error": f"Missing required field: {f}"}), 400
             
+    q_name = payload["quarter"].strip()
+    
+    # Check duplicate in local CSV if readable
     csv_path = os.path.join(os.path.dirname(__file__), "model", "training_data_v2.csv")
+    local_df = None
     try:
-        df = pd.read_csv(csv_path)
-        
-        # Check duplicate
-        q_name = payload["quarter"].strip()
-        if q_name in df["quarter"].values:
+        local_df = pd.read_csv(csv_path)
+        if q_name in local_df["quarter"].values:
             return jsonify({"error": f"Quarter '{q_name}' already exists in dataset."}), 400
+    except Exception:
+        pass
+
+    new_row = {
+        "quarter": q_name,
+        "gdp_growth": float(payload["gdp_growth"]),
+        "cpi_inflation": float(payload["cpi_inflation"]),
+        "wpi_inflation": float(payload["wpi_inflation"]),
+        "pmi_manufacturing": float(payload["pmi_manufacturing"]),
+        "repo_rate": float(payload["repo_rate"]),
+        "exports_yoy": float(payload["exports_yoy"]),
+        "core_sector_growth": float(payload["core_sector_growth"]),
+        "capacity_utilization": float(payload["capacity_utilization"]),
+        "corporate_earnings_growth": float(payload["corporate_earnings_growth"]),
+        "pfce_growth": float(payload["pfce_growth"]),
+        "inr_usd": float(payload["inr_usd"]),
+        "unemployment": float(payload["unemployment"]),
+        "label": payload["label"].strip()
+    }
+
+    # Save to Upstash Redis
+    redis_saved = False
+    redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
+    redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
+    added_quarters_key = "added_quarters_v1"
+    
+    if redis_url and redis_token:
+        try:
+            import urllib.request
+            # 1. GET existing list from Redis
+            body = json.dumps(["GET", added_quarters_key]).encode()
+            req = urllib.request.Request(
+                redis_url,
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {redis_token}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as r:
+                result = json.loads(r.read())
             
-        new_row = {
-            "quarter": q_name,
-            "gdp_growth": float(payload["gdp_growth"]),
-            "cpi_inflation": float(payload["cpi_inflation"]),
-            "wpi_inflation": float(payload["wpi_inflation"]),
-            "pmi_manufacturing": float(payload["pmi_manufacturing"]),
-            "repo_rate": float(payload["repo_rate"]),
-            "exports_yoy": float(payload["exports_yoy"]),
-            "core_sector_growth": float(payload["core_sector_growth"]),
-            "capacity_utilization": float(payload["capacity_utilization"]),
-            "corporate_earnings_growth": float(payload["corporate_earnings_growth"]),
-            "pfce_growth": float(payload["pfce_growth"]),
-            "inr_usd": float(payload["inr_usd"]),
-            "unemployment": float(payload["unemployment"]),
-            "label": payload["label"].strip()
-        }
-        
-        df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
-        df.to_csv(csv_path, index=False)
-        
+            added_list = []
+            if result.get("result"):
+                added_list = json.loads(result["result"])
+            
+            # Check duplicate in Redis list
+            for q in added_list:
+                if q["quarter"].strip().lower() == q_name.lower():
+                    return jsonify({"error": f"Quarter '{q_name}' already exists in added quarters."}), 400
+            
+            # Append new row
+            added_list.append(new_row)
+            
+            # 2. SET updated list back to Redis
+            value_str = json.dumps(added_list)
+            body = json.dumps(["SET", added_quarters_key, value_str]).encode()
+            req = urllib.request.Request(
+                redis_url,
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {redis_token}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=5) as r:
+                res_body = json.loads(r.read())
+            if not res_body.get("error"):
+                redis_saved = True
+                print("🟢 New quarter saved to Upstash Redis")
+        except Exception as e:
+            print(f"⚠️ Failed to save added quarter to Redis: {e}")
+
+    # Try saving to local CSV as fallback (local dev)
+    local_saved = False
+    if local_df is not None:
+        try:
+            df_updated = pd.concat([local_df, pd.DataFrame([new_row])], ignore_index=True)
+            df_updated.to_csv(csv_path, index=False)
+            local_saved = True
+        except Exception as e:
+            print(f"⚠️ Failed to write to local CSV: {e}")
+
+    if redis_saved or local_saved:
         return jsonify({"status": "success", "message": f"Successfully added quarter {q_name} to training dataset."})
+    else:
+        return jsonify({"error": "Failed to add quarter: Read-only file system and Redis unavailable"}), 500
     except Exception as e:
         return jsonify({"error": f"Failed to edit CSV: {str(e)}"}), 500
 

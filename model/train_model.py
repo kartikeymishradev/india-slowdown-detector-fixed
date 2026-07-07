@@ -19,6 +19,38 @@ warnings.filterwarnings('ignore')
 csv_path = os.path.join(os.path.dirname(__file__), 'training_data_v2.csv')
 df = pd.read_csv(csv_path)
 
+# ── Load Redis Added Quarters if available ────────────────────────────────────
+redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
+redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
+added_quarters_key = "added_quarters_v1"
+
+if redis_url and redis_token:
+    try:
+        import urllib.request
+        import json
+        body = json.dumps(["GET", added_quarters_key]).encode()
+        req = urllib.request.Request(
+            redis_url,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {redis_token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=5) as r:
+            result = json.loads(r.read())
+        if result.get("result"):
+            added_list = json.loads(result["result"])
+            if added_list:
+                added_df = pd.DataFrame(added_list)
+                # Concatenate with loaded df, making sure we don't have duplicate quarters
+                df = df[~df["quarter"].isin(added_df["quarter"])]
+                df = pd.concat([df, added_df], ignore_index=True)
+                print(f"Loaded {len(added_list)} additional quarters from Upstash Redis.")
+    except Exception as e:
+        print(f"⚠️ Failed to load added quarters from Redis: {e}")
+
 print("=" * 58)
 print("INDIA ECONOMIC SLOWDOWN DETECTOR — MODEL TRAINING v2")
 print("=" * 58)
@@ -101,9 +133,22 @@ for feat, imp in feat_imp.items():
 
 # ── Save ──────────────────────────────────────────────────────────────────────
 out_dir = os.path.dirname(__file__) or '.'
-joblib.dump(pipeline, os.path.join(out_dir, 'model.pkl'))
+local_save_path = os.path.join(out_dir, 'model.pkl')
+try:
+    joblib.dump(pipeline, local_save_path)
+    print(f"\n Model saved locally -> {local_save_path}")
+except Exception as e:
+    print(f"\n⚠️ Failed to save model locally: {e}")
 
-print(f"\n Model saved -> model/model.pkl")
+# Save to system temp directory so the parent Flask process can upload it to Redis
+import tempfile
+temp_save_path = os.path.join(tempfile.gettempdir(), 'model_temp.pkl')
+try:
+    joblib.dump(pipeline, temp_save_path)
+    print(f" Model saved to temporary directory -> {temp_save_path}")
+except Exception as e:
+    print(f"⚠️ Failed to save model to temporary directory: {e}")
+
 print(f" Trained on {len(df)} quarters with {len(FEATURES)} features")
 print("\nNew features vs v1:")
 print("  + core_sector_growth    (8-core industry index)")
