@@ -1241,13 +1241,37 @@ function renderSuggestionChips() {
   const row = document.getElementById('suggest-row');
   if (!row) return;
 
+  const priorityStatic = [
+    "Why is the Indian Rupee weakening against the US Dollar?",
+    "What is the difference between CPI and WPI inflation?",
+    "How does capacity utilization affect industrial growth?"
+  ];
+  
+  const otherStatic = STATIC_SUGGESTIONS.filter(q => !priorityStatic.includes(q));
   const dynamic = shuffleArr(buildDynamicChips(window._cachedData)).slice(0, 2);
-  const staticNeeded = Math.max(2, 4 - dynamic.length);
-  const staticPicks = shuffleArr(STATIC_SUGGESTIONS).slice(0, staticNeeded);
-  const combined = shuffleArr([
-    ...dynamic.map(q => ({ q, dynamic: true })),
-    ...staticPicks.map(q => ({ q, dynamic: false })),
-  ]);
+  
+  const picks = [];
+  
+  // Add dynamic chips (max 1)
+  if (dynamic.length > 0) {
+    picks.push({ q: dynamic[0], dynamic: true });
+  }
+  
+  // Add all 3 new priority static chips
+  priorityStatic.forEach(q => {
+    picks.push({ q: q, dynamic: false });
+  });
+  
+  // Fill remaining slots up to 5 chips
+  if (picks.length < 5) {
+    const needed = 5 - picks.length;
+    const extra = shuffleArr(otherStatic).slice(0, needed);
+    extra.forEach(q => {
+      picks.push({ q: q, dynamic: false });
+    });
+  }
+
+  const combined = shuffleArr(picks);
 
   row.innerHTML = '';
   combined.forEach(({ q, dynamic: isDynamic }) => {
