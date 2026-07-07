@@ -495,8 +495,10 @@ def verify_admin_credentials():
     clean_admin_token = admin_token.strip().strip("'").strip('"')
     expected_user = os.environ.get("ADMIN_USER", "admin").strip().strip("'").strip('"').lower()
     
-    print(f"[AUTH_DEBUG] Expected user: '{expected_user}', Provided user: '{user}'")
-    print(f"[AUTH_DEBUG] Expected token length: {len(clean_admin_token)}, Provided token length: {len(token)}")
+    import sys
+    print(f"[AUTH_DEBUG] Expected user: '{expected_user}', Provided user: '{user}'", file=sys.stderr)
+    print(f"[AUTH_DEBUG] Expected token length: {len(clean_admin_token)}, Provided token length: {len(token)}", file=sys.stderr)
+    sys.stderr.flush()
     
     return token == clean_admin_token and user == expected_user
 
