@@ -10,7 +10,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/style.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
 </head>
 <body>
 
@@ -235,7 +235,11 @@
               <div class="sk foundation-sub" id="foundation-sub">—</div>
               <p class="foundation-note">Unlike the ML model above (a trained ensemble forecasting next quarter), this score is a plain count of how many of the same indicators are currently past a known weak-zone threshold — no prediction, just today's snapshot, fully explainable.</p>
             </div>
-            <div class="foundation-list" id="foundation-list"></div>
+             <div class="foundation-list" id="foundation-list">
+               <div class="sk foundation-row" style="height:35px; margin: 8px 0; border-radius: 6px;"></div>
+               <div class="sk foundation-row" style="height:35px; margin: 8px 0; border-radius: 6px;"></div>
+               <div class="sk foundation-row" style="height:35px; margin: 8px 0; border-radius: 6px;"></div>
+             </div>
           </div>
           <div class="threshold-panel" id="threshold-panel" style="display:none">
             <div class="threshold-panel-head">
@@ -334,7 +338,16 @@
             <span class="card-title">Additional Indicators</span>
             <span class="card-tag">GST · NPCI · Grid-India · Railways · NSE</span>
           </div>
-          <div class="extra-grid" id="extra-grid"></div>
+          <div class="extra-grid" id="extra-grid">
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+          </div>
         </div>
 
         <!-- HF Indicators -->
@@ -343,7 +356,13 @@
             <span class="card-title">High-Frequency Indicators</span>
             <span class="card-tag">RBI · MOSPI · CMIE · MoC</span>
           </div>
-          <div class="hf-grid" id="hf-grid"></div>
+          <div class="hf-grid" id="hf-grid">
+            <div class="hf-item sk" style="height:40px; margin: 4px; border-radius: 6px;"></div>
+            <div class="hf-item sk" style="height:40px; margin: 4px; border-radius: 6px;"></div>
+            <div class="hf-item sk" style="height:40px; margin: 4px; border-radius: 6px;"></div>
+            <div class="hf-item sk" style="height:40px; margin: 4px; border-radius: 6px;"></div>
+            <div class="hf-item sk" style="height:40px; margin: 4px; border-radius: 6px;"></div>
+          </div>
         </div>
 
       </section>
@@ -436,7 +455,11 @@
             <button class="learn-tab" data-cat="trade">Trade</button>
             <button class="learn-tab" data-cat="jobs">Jobs</button>
           </div>
-          <div class="def-grid" id="def-grid"></div>
+          <div class="def-grid" id="def-grid">
+            <div class="def-card sk" style="height:120px; border-radius:10px;"></div>
+            <div class="def-card sk" style="height:120px; border-radius:10px;"></div>
+            <div class="def-card sk" style="height:120px; border-radius:10px;"></div>
+          </div>
           <div class="ask-box">
             <div class="ask-header">
               <div class="ask-title">Ask the AI</div>
@@ -798,6 +821,6 @@ const observer = new IntersectionObserver(entries => {
 }, { threshold: 0.35 });
 document.querySelectorAll('.content-section').forEach(s => observer.observe(s));
 </script>
-<script src="/static/script.js?v=2.2"></script>
+<script src="/static/script.js?v=2.2" defer></script>
 </body>
 </html>

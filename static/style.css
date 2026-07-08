@@ -420,7 +420,7 @@ a:hover {
    ML PREDICTION
 ════════════════════════════════════════════ */
 .pred-wrap { display: flex; gap: 20px; align-items: flex-start; flex-wrap: wrap; }
-.gauge-box { position: relative; flex: 0 0 180px; display: flex; flex-direction: column; align-items: center; }
+.gauge-box { position: relative; flex: 0 0 180px; display: flex; flex-direction: column; align-items: center; min-height: 140px; }
 .gauge-num { font-family: var(--font-mono); font-size: 26px; font-weight: 800; margin-top: -24px; color: var(--text); }
 .pred-info { flex: 1; min-width: 160px; }
 .pred-pill { display: inline-block; padding: 5px 16px; border-radius: 20px; font-size: 13px; font-weight: 700; margin-bottom: 8px; background: var(--blue-bg); color: var(--blue); }
@@ -455,7 +455,7 @@ a:hover {
 /* ════════════════════════════════════════════
    SECTOR GRID
 ════════════════════════════════════════════ */
-.sector-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sector-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 245px; }
 .sec-card { border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; cursor: pointer; transition: all .15s; }
 .sec-card:hover  { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
 .sec-card.active { border-color: var(--blue); background: var(--blue-bg); }
@@ -530,7 +530,7 @@ a:hover {
 /* ════════════════════════════════════════════
    DATA SOURCE BADGES
 ════════════════════════════════════════════ */
-.src-badge-wrap { margin-top: 4px; }
+.src-badge-wrap { margin-top: 4px; min-height: 18px; display: block; }
 .src-badge     { font-size: 10px; padding: 1px 6px; border-radius: 999px; font-weight: 600; white-space: nowrap; cursor: help; }
 .src-live      { background: #DCFCE7; color: #15803D; }
 .src-ai        { background: #DBEAFE; color: #1D4ED8; }
@@ -675,7 +675,7 @@ a:hover {
   .card-title { font-size: 13px; }
 
   /* Sector Health: single column reads better than a squeeze on phones */
-  .sector-grid { grid-template-columns: 1fr; }
+  .sector-grid { grid-template-columns: 1fr; min-height: 432px; }
 
   /* Foundation Score summary shouldn't force a fixed 220px column on narrow screens */
   .foundation-summary { flex: 1 1 100%; }

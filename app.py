@@ -100,7 +100,7 @@ def load_model():
     else:
         print("⚠️  model.pkl not found — run: python model/train_model.py")
 
-load_model()
+# load_model()  # Load model lazily on first prediction request instead of blocking server import
 
 LABELS = {0: "Stable", 1: "Warning", 2: "Slowdown"}
 LABEL_COLORS = {0: "green", 1: "amber", 2: "red"}
@@ -293,6 +293,10 @@ def api_indicators():
 @app.route("/api/predict")
 def api_predict():
     """Run ML model on current indicators."""
+    global model
+    if model is None:
+        load_model()
+
     data = get_all_indicators()
 
     prediction = {"label": "Warning", "confidence": 0.5, "probabilities": {}}
@@ -426,6 +430,10 @@ def api_shock_scenario(key):
     """Run the actual trained model against a real historical quarter
     (e.g. the COVID-19 shock quarter) and return what it predicted then,
     for the frontend's Historical Shock Overlay comparison."""
+    global model
+    if model is None:
+        load_model()
+
     cfg = HISTORICAL_SHOCKS.get(key)
     if not cfg:
         return jsonify({"error": "Unknown scenario", "available": list(HISTORICAL_SHOCKS.keys())}), 404
