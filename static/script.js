@@ -1674,7 +1674,15 @@ function triggerAIRefresh() {
   })
     .then(async res => {
       logToConsole('[INFO] Server received request. Refresh pipeline running...', 'info');
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error(res.status === 504 
+          ? 'Server Timeout (504) — Google Search grounding took too long under high load. Please try again in a few minutes.' 
+          : `Server Error (${res.status}): ${res.statusText || 'Unknown error'}`);
+      }
       if (!res.ok) throw new Error(data.error || 'Server returned an error');
       return data;
     })
@@ -1808,7 +1816,15 @@ function triggerModelRetrain() {
     body: JSON.stringify({})
   })
     .then(async res => {
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error(res.status === 504 
+          ? 'Server Timeout (504) — The model training process timed out.' 
+          : `Server Error (${res.status}): ${res.statusText || 'Unknown error'}`);
+      }
       if (!res.ok) throw new Error(data.error || 'Training process returned an error');
       return data;
     })
