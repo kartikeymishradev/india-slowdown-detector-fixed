@@ -138,7 +138,7 @@ def _redis_get():
         if result.get("result"):
             return json.loads(result["result"])
     except Exception as e:
-        print(f"⚠️  Redis GET failed: {e}")
+        print(f"[WARN] Redis GET failed: {e}")
     return None
 
 
@@ -174,33 +174,15 @@ def _redis_set(data):
         with urllib.request.urlopen(req, timeout=5) as r:
             result = json.loads(r.read())
         if result.get("error"):
-            print(f"⚠️  Redis SET returned error: {result['error']}")
+            print(f"[WARN] Redis SET returned error: {result['error']}")
         else:
-            print("🟢 Redis SET succeeded: Grounding cache successfully saved to Upstash Redis")
+            print("[OK] Redis SET succeeded: Grounding cache successfully saved to Upstash Redis")
     except Exception as e:
-        print(f"⚠️  Redis SET failed: {e}")
+        print(f"[WARN] Redis SET failed: {e}")
 
 
 def _load_disk_cache():
-    """Load cache — tries Redis first (Vercel), falls back to disk (local dev).
-
-    IMPORTANT: ts:0 is a sentinel meaning "never successfully fetched", not a
-    real timestamp. It gets persisted to Redis/disk whenever _save_disk_cache()
-    runs before the first successful Gemini fetch (e.g. right after a fresh
-    deploy). If we blindly did _cache.update(saved["grounding"]) here, a
-    fresh cold-start container would load that ts:0 into memory and
-    get_grounding_status() would then report "Not yet fetched" forever, even
-    after a later successful refresh wrote a real ts to Redis from a
-    DIFFERENT container -- because this container's in-memory ts:0 looks
-    "already set" and the merge below has to be careful not to let it win.
-
-    We always take "data" from whatever was saved (so dashboard values still
-    populate), but only adopt "ts" if it's a real (>0) timestamp -- otherwise
-    we leave ts at its current in-memory value (0, i.e. unset) so that
-    get_grounding_status()'s "g_ts is None" check still correctly falls
-    through to re-check Redis on every call rather than caching a false
-    "never fetched" verdict for this container's lifetime."""
-
+    """Load cache — local disk file only (fast, no network block)."""
     def _apply(target_cache, section):
         if not section:
             return
@@ -209,17 +191,7 @@ def _load_disk_cache():
         raw_ts = section.get("ts")
         if raw_ts and float(raw_ts) > 0:
             target_cache["ts"] = float(raw_ts)
-        # else: leave target_cache["ts"] untouched (stays 0/unset) -- do NOT
-        # overwrite with the ts:0 sentinel.
 
-    # Try Redis first
-    saved = _redis_get()
-    if saved:
-        print(" Cache loaded from Redis")
-        _apply(_cache, saved.get("grounding"))
-        _apply(_extended_cache, saved.get("extended"))
-        return
-    # Fallback: disk cache
     try:
         if not os.path.exists(_CACHE_FILE):
             return
@@ -227,9 +199,9 @@ def _load_disk_cache():
             saved = json.load(f)
         _apply(_cache, saved.get("grounding"))
         _apply(_extended_cache, saved.get("extended"))
-        print(" Cache loaded from disk")
+        print("[OK] Cache loaded from disk")
     except Exception as e:
-        print(f"⚠️  Could not load grounding cache from disk: {e}")
+        print(f"[WARN] Could not load grounding cache from disk: {e}")
 
 
 def _save_disk_cache():
@@ -243,24 +215,58 @@ def _save_disk_cache():
         with open(_CACHE_FILE, "w") as f:
             json.dump(payload, f)
     except Exception as e:
-        print(f"⚠️  Could not save grounding cache to disk: {e}")
+        print(f"[WARN] Could not save grounding cache to disk: {e}")
 
 
 _last_redis_sync = 0
+_redis_sync_in_flight = False
 
 
 def sync_cache_if_needed():
-    """Sync cache from Upstash Redis if we haven't checked in the last 60 seconds.
-    This ensures multiple serverless container instances can pick up updates
-    written by other instances or local PowerShell scripts within 60 seconds."""
-    global _last_redis_sync
+    """Sync cache from Upstash Redis asynchronously in a background thread
+    if we haven't checked in the last 60 seconds. This avoids blocking the request thread."""
+    global _last_redis_sync, _redis_sync_in_flight
     now = time.time()
+    
+    # Always load from local disk file first if memory cache is empty
+    if _cache["data"] is None and _extended_cache["data"] is None:
+        _load_disk_cache()
+        
     if now - _last_redis_sync > 60:
         _last_redis_sync = now
-        try:
-            _load_disk_cache()
-        except Exception as e:
-            print(f"⚠️  sync_cache_if_needed failed: {e}")
+        if not _redis_sync_in_flight:
+            _redis_sync_in_flight = True
+            import threading
+            def _bg_sync():
+                global _redis_sync_in_flight
+                try:
+                    saved = _redis_get()
+                    if saved:
+                        def _apply(target_cache, section):
+                            if not section:
+                                return
+                            if section.get("data"):
+                                target_cache["data"] = section["data"]
+                            raw_ts = section.get("ts")
+                            if raw_ts and float(raw_ts) > 0:
+                                target_cache["ts"] = float(raw_ts)
+                        _apply(_cache, saved.get("grounding"))
+                        _apply(_extended_cache, saved.get("extended"))
+                        print("[OK] Grounding cache synced from Upstash Redis (background)")
+                        # Also save to local disk file so next container boot reads fast
+                        try:
+                            payload = {"grounding": _cache, "extended": _extended_cache}
+                            os.makedirs(os.path.dirname(_CACHE_FILE), exist_ok=True)
+                            with open(_CACHE_FILE, "w") as f:
+                                json.dump(payload, f)
+                        except:
+                            pass
+                except Exception as e:
+                    print(f"[WARN] Background Redis cache sync failed: {e}")
+                finally:
+                    _redis_sync_in_flight = False
+                    
+            threading.Thread(target=_bg_sync, daemon=True).start()
 
 
 # ──────────────────────────────────────────────────────────────────────────────

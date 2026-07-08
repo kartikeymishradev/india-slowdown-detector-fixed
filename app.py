@@ -64,41 +64,49 @@ model = None
 def load_model():
     global model
     
-    # 1. Try loading from Redis first
+    # 1. Load local model immediately (very fast, under 10ms)
+    if os.path.exists(MODEL_PATH):
+        try:
+            model = joblib.load(MODEL_PATH)
+            print("[OK] ML model loaded instantly from local file")
+        except Exception as e:
+            print(f"[WARN] Failed to load local model: {e}")
+    else:
+        print("[WARN] model.pkl not found — run: python model/train_model.py")
+        
+    # 2. Fetch from Redis in background to update model in memory if retrained version exists
     redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
     redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
     redis_key = "trained_model_v1"
     
     if redis_url and redis_token:
-        try:
-            import urllib.request
-            import base64
-            body = json.dumps(["GET", redis_key]).encode()
-            req = urllib.request.Request(
-                redis_url,
-                data=body,
-                headers={
-                    "Authorization": f"Bearer {redis_token}",
-                    "Content-Type": "application/json",
-                },
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=5) as r:
-                result = json.loads(r.read())
-            if result.get("result"):
-                model_bytes = base64.b64decode(result["result"].encode())
-                model = joblib.load(io.BytesIO(model_bytes))
-                print("🟢 ML model loaded successfully from Upstash Redis")
-                return
-        except Exception as e:
-            print(f"⚠️ Failed to load model from Redis: {e}")
-            
-    # 2. Fallback to local model.pkl file
-    if os.path.exists(MODEL_PATH):
-        model = joblib.load(MODEL_PATH)
-        print(" ML model loaded from local file")
-    else:
-        print("⚠️  model.pkl not found — run: python model/train_model.py")
+        import threading
+        def _fetch_redis():
+            global model
+            try:
+                import urllib.request
+                import base64
+                body = json.dumps(["GET", redis_key]).encode()
+                req = urllib.request.Request(
+                    redis_url,
+                    data=body,
+                    headers={
+                        "Authorization": f"Bearer {redis_token}",
+                        "Content-Type": "application/json",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    result = json.loads(r.read())
+                if result.get("result"):
+                    model_bytes = base64.b64decode(result["result"].encode())
+                    loaded_model = joblib.load(io.BytesIO(model_bytes))
+                    model = loaded_model
+                    print("[OK] ML model loaded and updated in memory from Upstash Redis (background)")
+            except Exception as e:
+                print(f"[WARN] Background Redis model load failed: {e}")
+                
+        threading.Thread(target=_fetch_redis, daemon=True).start()
 
 # load_model()  # Load model lazily on first prediction request instead of blocking server import
 
@@ -556,9 +564,9 @@ def api_config():
                     res_body = json.loads(r.read())
                 if not res_body.get("error"):
                     redis_saved = True
-                    print("🟢 Configuration overrides saved to Upstash Redis")
+                    print("[OK] Configuration overrides saved to Upstash Redis")
             except Exception as e:
-                print(f"⚠️ Failed to save config overrides to Redis: {e}")
+                print(f"[WARN] Failed to save config overrides to Redis: {e}")
 
         # Try saving to local file system (local development / fallback)
         local_saved = False
@@ -567,10 +575,12 @@ def api_config():
                 json.dump(payload, f, indent=2)
             local_saved = True
         except Exception as e:
-            print(f"⚠️ Failed to write config.json locally: {e}")
+            print(f"[WARN] Failed to write config.json locally: {e}")
 
         # Return success if either succeeded
         if redis_saved or local_saved:
+            import data.fetch_data
+            data.fetch_data._cached_config = payload
             return jsonify({"status": "success", "message": "Configuration updated successfully"})
         else:
             return jsonify({"error": "Failed to save configuration: Read-only file system and Redis unavailable"}), 500

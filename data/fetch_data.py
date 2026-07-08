@@ -94,40 +94,54 @@ def _cached_live(key, fetch_fn, ttl=_LIVE_TTL_SECONDS, sync=False):
 
 # ── Load config.json ──────────────────────────────────────────────────────────
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config.json')
+_cached_config = None
 
 def load_config():
-    # 1. Try Redis first if env vars exist
+    global _cached_config
+    if _cached_config is not None:
+        return _cached_config
+        
+    # 1. Load local config.json immediately (very fast fallback/default)
+    try:
+        with open(CONFIG_PATH, 'r') as f:
+            _cached_config = json.load(f)
+    except Exception as e:
+        print(f"[WARN] config.json not found or invalid: {e}")
+        _cached_config = {}
+        
+    # 2. Fetch overrides from Redis in background to update cache asynchronously
     redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
     redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
     redis_key = "config_overrides_v1"
     
     if redis_url and redis_token:
-        try:
-            import urllib.request
-            body = json.dumps(["GET", redis_key]).encode()
-            req = urllib.request.Request(
-                redis_url,
-                data=body,
-                headers={
-                    "Authorization": f"Bearer {redis_token}",
-                    "Content-Type": "application/json",
-                },
-                method="POST",
-            )
-            with urllib.request.urlopen(req, timeout=3) as r:
-                result = json.loads(r.read())
-            if result.get("result"):
-                return json.loads(result["result"])
-        except Exception as e:
-            print(f"⚠️ Redis GET config overrides failed: {e}")
-
-    # 2. Fallback to local config.json file
-    try:
-        with open(CONFIG_PATH, 'r') as f:
-            return json.load(f)
-    except Exception as e:
-        print(f"⚠️  config.json not found or invalid: {e}")
-        return {}
+        import threading
+        def _fetch_redis_config():
+            global _cached_config
+            try:
+                import urllib.request
+                body = json.dumps(["GET", redis_key]).encode()
+                req = urllib.request.Request(
+                    redis_url,
+                    data=body,
+                    headers={
+                        "Authorization": f"Bearer {redis_token}",
+                        "Content-Type": "application/json",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    result = json.loads(r.read())
+                if result.get("result"):
+                    overrides = json.loads(result["result"])
+                    _cached_config = overrides
+                    print("[OK] Config overrides loaded from Upstash Redis (background)")
+            except Exception as e:
+                print(f"[WARN] Background Redis config load failed: {e}")
+                
+        threading.Thread(target=_fetch_redis_config, daemon=True).start()
+        
+    return _cached_config
 
 # ── Live API fetchers ─────────────────────────────────────────────────────────
 
@@ -262,7 +276,7 @@ def get_all_indicators():
     sources_live = []
 
     # ── Live: INR/USD ──────────────────────────────────────────────────────────
-    inr_usd = _cached_live("inr_usd", fetch_inr_usd, sync=True)
+    inr_usd = _cached_live("inr_usd", fetch_inr_usd, sync=False)
     if inr_usd is None:
         inr_usd = fallback.get("inr_usd", 94.5)  # last known fallback, see config.json
     else:
