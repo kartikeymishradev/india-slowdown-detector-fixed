@@ -16,7 +16,7 @@ Hardcoded in config.json (update manually):
   - All HF sub-indicators (rabi sowing, reservoir, MSP, EPFO etc.)
 """
 
-import requests, io, json, os
+import requests, io, json, os, time, threading
 from datetime import datetime
 import pandas as pd
 
@@ -25,23 +25,130 @@ try:
 except ImportError:
     from gemini_grounding import fetch_grounded_indicators, fetch_extended_indicators
 
+# ── Short-TTL cache for live external calls ───────────────────────────────────
+# fetch_inr_usd() / fetch_exports_yoy() used to be called fresh on EVERY
+# /api/predict request. Under load or when the upstream API is slow, their
+# timeouts+retries stacked up sequentially (worst case ~6s + ~24s = ~30s),
+# which is exactly why /api/predict itself was taking ~28-34s. These
+# indicators only change a few times a day at most, so we cache the result
+# for a few minutes and serve it instantly on every other request; a slow
+# upstream now only ever delays the (rare) background refresh, never a
+# normal page load.
+# We fetch them asynchronously in a background thread to prevent blocking.
+_LIVE_TTL_SECONDS = 5 * 60
+_live_cache = {}
+_bg_fetching = set()
+_bg_lock = threading.Lock()
+
+
+def _trigger_background_fetch(key, fetch_fn):
+    """Spins up a background thread to revalidate a live API value."""
+    with _bg_lock:
+        if key in _bg_fetching:
+            return
+        _bg_fetching.add(key)
+
+    def _run():
+        try:
+            value = fetch_fn()
+            if value is not None:
+                _live_cache[key] = {"value": value, "ts": time.time()}
+        finally:
+            with _bg_lock:
+                _bg_fetching.discard(key)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def _cached_live(key, fetch_fn, ttl=_LIVE_TTL_SECONDS, sync=False):
+    """Return a cached value for `key` if still fresh. If expired or missing,
+    either fetches synchronously (sync=True) or triggers background-thread
+    revalidation (sync=False), guaranteeing zero request thread blocking for async keys."""
+    now = time.time()
+    entry = _live_cache.get(key)
+    if entry:
+        if (now - entry["ts"]) < ttl:
+            return entry["value"]
+        # Cache expired:
+        if sync:
+            value = fetch_fn()
+            if value is not None:
+                _live_cache[key] = {"value": value, "ts": now}
+                return value
+            return entry["value"]  # fallback to stale on failure
+        else:
+            _trigger_background_fetch(key, fetch_fn)
+            return entry["value"]
+
+    # Cache empty:
+    if sync:
+        value = fetch_fn()
+        if value is not None:
+            _live_cache[key] = {"value": value, "ts": now}
+            return value
+        return None
+    else:
+        _trigger_background_fetch(key, fetch_fn)
+        return None
+
+
 # ── Load config.json ──────────────────────────────────────────────────────────
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), '..', 'config.json')
+_cached_config = None
 
 def load_config():
+    global _cached_config
+    if _cached_config is not None:
+        return _cached_config
+        
+    # 1. Load local config.json immediately (very fast fallback/default)
     try:
         with open(CONFIG_PATH, 'r') as f:
-            return json.load(f)
+            _cached_config = json.load(f)
     except Exception as e:
-        print(f"⚠️  config.json not found or invalid: {e}")
-        return {}
+        print(f"[WARN] config.json not found or invalid: {e}")
+        _cached_config = {}
+        
+    # 2. Fetch overrides from Redis in background to update cache asynchronously
+    redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
+    redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
+    redis_key = "config_overrides_v1"
+    
+    if redis_url and redis_token:
+        import threading
+        def _fetch_redis_config():
+            global _cached_config
+            try:
+                import urllib.request
+                body = json.dumps(["GET", redis_key]).encode()
+                req = urllib.request.Request(
+                    redis_url,
+                    data=body,
+                    headers={
+                        "Authorization": f"Bearer {redis_token}",
+                        "Content-Type": "application/json",
+                    },
+                    method="POST",
+                )
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    result = json.loads(r.read())
+                if result.get("result"):
+                    overrides = json.loads(result["result"])
+                    _cached_config = overrides
+                    print("[OK] Config overrides loaded from Upstash Redis (background)")
+            except Exception as e:
+                print(f"[WARN] Background Redis config load failed: {e}")
+                
+        threading.Thread(target=_fetch_redis_config, daemon=True).start()
+        
+    return _cached_config
 
 # ── Live API fetchers ─────────────────────────────────────────────────────────
 
 def fetch_inr_usd():
     """Live USD/INR from frankfurter.app (ECB rates, free, no key)."""
     try:
-        r = requests.get("https://api.frankfurter.app/latest?from=USD&to=INR", timeout=6)
+        r = requests.get("https://api.frankfurter.app/latest?from=USD&to=INR", timeout=2)
         if r.status_code == 200:
             return round(float(r.json()["rates"]["INR"]), 2)
     except Exception:
@@ -49,8 +156,25 @@ def fetch_inr_usd():
     return None
 
 
+_STALE_DATA_MAX_AGE_YEARS = 1  # a dataset whose latest row is older than this is treated
+                                # as unavailable rather than silently shown as "live"
+
+
 def fetch_cpi_india():
-    """CPI India from World Bank open dataset on GitHub."""
+    """CPI India from World Bank open dataset on GitHub.
+
+    IMPORTANT CAVEAT: this dataset's 'CPI' column is a FULL CALENDAR-YEAR
+    AVERAGE inflation rate, not a current monthly headline YoY figure, and
+    World Bank typically only has the prior full year available (e.g. only
+    up to 2024 partway through 2026). Treating that as "today's inflation"
+    is materially misleading -- it can differ by a percentage point or more
+    from the latest MOSPI monthly release, and mixes up "annual average" with
+    "current month" even when the number happens to look plausible.
+
+    We only return a value here if it's within _STALE_DATA_MAX_AGE_YEARS of
+    the current year; otherwise we return None so the caller falls back to
+    config.json's manually-curated, dated, MOSPI-sourced figure (or, better,
+    the Gemini-grounded monthly figure -- see get_all_indicators())."""
     try:
         url = "https://raw.githubusercontent.com/datasets/cpi/master/data/cpi.csv"
         r = requests.get(url, timeout=10)
@@ -59,14 +183,31 @@ def fetch_cpi_india():
             india = df[df['Country Code'] == 'IND'].sort_values('Year', ascending=False)
             if not india.empty:
                 latest = india.iloc[0]
-                return round(float(latest['CPI']), 2), int(latest['Year'])
+                year = int(latest['Year'])
+                if datetime.now().year - year > _STALE_DATA_MAX_AGE_YEARS:
+                    return None, None  # too stale to present as current data
+                return round(float(latest['CPI']), 2), year
     except Exception:
         pass
     return None, None
 
 
 def fetch_gdp_growth_india():
-    """GDP growth rate India from World Bank open dataset on GitHub."""
+    """GDP growth rate India from World Bank open dataset on GitHub.
+
+    IMPORTANT CAVEAT: this computes YoY % change on NOMINAL GDP in current
+    USD -- so it bakes in both inflation and INR/USD exchange-rate movement,
+    NOT the real GDP growth % that MOSPI/RBI/the press report as "GDP
+    growth". World Bank data also typically lags 2+ years. This is a
+    fundamentally different -- and usually quite different-looking --
+    number from the headline "Real GDP Growth YoY" figure, even though both
+    are percentages, so it should never be shown as if it were today's
+    official growth rate.
+
+    We only return a value here if it's within _STALE_DATA_MAX_AGE_YEARS of
+    the current year; otherwise we return None so the caller falls back to
+    config.json's manually-curated MOSPI figure (or, better, the
+    Gemini-grounded real-GDP figure -- see get_all_indicators())."""
     try:
         url = "https://raw.githubusercontent.com/datasets/gdp/master/data/gdp.csv"
         r = requests.get(url, timeout=10)
@@ -78,27 +219,33 @@ def fetch_gdp_growth_india():
                 india['growth'] = india['Value'].pct_change() * 100
                 india = india.dropna(subset=['growth'])
                 latest = india.sort_values('Year', ascending=False).iloc[0]
+                year = int(latest['Year'])
+                if datetime.now().year - year > _STALE_DATA_MAX_AGE_YEARS:
+                    return None, None  # too stale to present as current data
                 val = round(float(latest['growth']), 2)
                 if abs(val) < 30:
-                    return val, int(latest['Year'])
+                    return val, year
     except Exception:
         pass
     return None, None
 
 
-def fetch_exports_yoy(retries=2):
+def fetch_exports_yoy(retries=1):
     """Merchandise exports YoY from data.gov.in (Ministry of Commerce).
     Retries on transient failures and sanity-checks the result before
     trusting it — a single bad/missing record should never produce a
     wild percentage swing on the dashboard."""
+    api_key = os.environ.get("DATA_GOV_IN_API_KEY")
+    if not api_key:
+        return None
     url = (
         "https://api.data.gov.in/resource/e8b0e12d-f3a3-4cb0-84c9-4e4c7cf89dd0"
-        f"?api-key={os.environ.get('DATA_GOV_IN_API_KEY', '579b464db66ec23bdd000001cdd3946e44ce4aab0ddd8f4b3c4b9e73')}"
+        f"?api-key={api_key}"
         "&format=json&limit=2"
     )
     for attempt in range(retries + 1):
         try:
-            r = requests.get(url, timeout=8)
+            r = requests.get(url, timeout=4)
             if r.status_code == 200:
                 records = r.json().get("records", [])
                 if len(records) >= 2:
@@ -129,28 +276,38 @@ def get_all_indicators():
     sources_live = []
 
     # ── Live: INR/USD ──────────────────────────────────────────────────────────
-    inr_usd = fetch_inr_usd()
+    inr_usd = _cached_live("inr_usd", fetch_inr_usd, sync=False)
     if inr_usd is None:
         inr_usd = fallback.get("inr_usd", 94.5)  # last known fallback, see config.json
     else:
         sources_live.append("INR/USD:frankfurter.app")
 
-    # ── Live: CPI ─────────────────────────────────────────────────────────────
-    cpi_val, cpi_yr = fetch_cpi_india()
-    if cpi_val is None:
-        cpi_val = fallback.get("cpi_inflation_pct", 3.93)  # see config.json fallback_defaults
-    else:
-        sources_live.append(f"CPI:{cpi_yr}:WorldBank")
+    # ── CPI ───────────────────────────────────────────────────────────────────
+    # NOTE: fetch_cpi_india() is intentionally NOT called here anymore. It
+    # pulled from a World Bank annual-average dataset (github.com/datasets/cpi)
+    # that is a full CALENDAR-YEAR average, typically 12-18 months stale
+    # versus MOSPI's current monthly print, and silently overrode the
+    # correct, dated, MOSPI-sourced fallback below whenever it happened to
+    # return a row (verified: it was the exact source of a 4.95% vs the
+    # real 3.93% mismatch). The Gemini-grounded "cpi" field below (tightly
+    # prompted to reject sub-indices/annual-averages) is a materially better
+    # "live" source and still gets first priority when available.
+    cpi_val = fallback.get("cpi_inflation_pct", 3.93)  # see config.json fallback_defaults
+    cpi_yr  = None  # set to a real month string below if Gemini grounding supplies one
 
-    # ── Live: GDP growth ──────────────────────────────────────────────────────
-    gdp_val, gdp_yr = fetch_gdp_growth_india()
-    if gdp_val is None:
-        gdp_val = fallback.get("gdp_growth_pct", 7.7)  # see config.json fallback_defaults
-    else:
-        sources_live.append(f"GDP:{gdp_yr}:WorldBank")
+    # ── GDP growth ───────────────────────────────────────────────────────────
+    # NOTE: fetch_gdp_growth_india() is intentionally NOT called here anymore.
+    # It derived a YoY% from the World Bank's NOMINAL GDP in current US$,
+    # which conflates real growth, domestic inflation, and INR/USD movement —
+    # not the same metric as MOSPI's real GDP growth rate, and 2-3 years
+    # stale on top of that (verified: it was the exact source of a 5.86% vs
+    # the real 7.8% mismatch). The Gemini-grounded "gdp_growth" field below
+    # still gets first priority when available.
+    gdp_val = fallback.get("gdp_growth_pct", 7.7)  # see config.json fallback_defaults
+    gdp_yr  = None  # set to a real quarter string below if Gemini grounding supplies one
 
     # ── Live: Exports YoY ─────────────────────────────────────────────────────
-    exp_val = fetch_exports_yoy()
+    exp_val = _cached_live("exports_yoy", fetch_exports_yoy)
     if exp_val is None:
         exp_val = fallback.get("export_growth_pct", 16.09)  # see config.json fallback_defaults
     else:
@@ -197,6 +354,19 @@ def get_all_indicators():
         if "export_growth" in grounded and "Exports:data.gov.in" not in sources_live:
             exp_val = grounded["export_growth"]
             grounded_fields.append("export_growth")
+        # GDP growth & CPI: the World Bank fetches above are annual-average /
+        # nominal-USD figures that are frequently 1-3 YEARS stale (see the
+        # caveats on fetch_cpi_india/fetch_gdp_growth_india) — a Gemini-grounded
+        # MOSPI monthly/quarterly figure, when available, is a materially
+        # better and more current number and should take priority over them.
+        if "gdp_growth" in grounded:
+            gdp_val = grounded["gdp_growth"]
+            gdp_yr = grounded.get("gdp_growth_period", gdp_yr)
+            grounded_fields.append("gdp_growth")
+        if "cpi" in grounded:
+            cpi_val = grounded["cpi"]
+            cpi_yr = grounded.get("cpi_month", cpi_yr)
+            grounded_fields.append("cpi")
         if grounded_fields:
             sources_live.append(f"Gemini-grounded:{','.join(grounded_fields)}")
 
@@ -283,6 +453,11 @@ def get_all_indicators():
             "avg": 55.8,
             "threshold": 50.0,
             "higher_good": True,
+            # PMI has one economically meaningful line: 50 (expansion vs
+            # contraction). Being a bit under the 12-month average while
+            # still comfortably above 50 is normal, not a warning sign --
+            # so don't downgrade to "Watch" purely for that.
+            "warn_below_avg": False,
             "trend": pmi_trend,
             "hf": [
                 {"label": "New orders index",     "value": pmi_sub.get("new_orders",  "59.2")},
@@ -364,8 +539,10 @@ def get_all_indicators():
     )
 
     field_sources = {
-        "gdp_growth":    "live" if any("GDP" in s for s in sources_live) else "manual",
-        "cpi":           "live" if any("CPI" in s for s in sources_live) else "manual",
+        "gdp_growth":    "ai_grounded" if "gdp_growth" in grounded_fields
+                          else "live" if any("GDP" in s for s in sources_live) else "manual",
+        "cpi":           "ai_grounded" if "cpi" in grounded_fields
+                          else "live" if any("CPI" in s for s in sources_live) else "manual",
         "inr_usd":       "live" if any("INR" in s for s in sources_live) else "manual",
         "export_growth": "live" if "Exports:data.gov.in" in sources_live
                           else "ai_grounded" if "export_growth" in grounded_fields
@@ -379,7 +556,9 @@ def get_all_indicators():
 
     return {
         "gdp_growth":     gdp_val,
+        "gdp_growth_period": gdp_yr,   # e.g. "Q4 FY2025-26" (Gemini) or a WB year (int) or None
         "cpi":            cpi_val,
+        "cpi_month":      cpi_yr,      # e.g. "May 2026" (Gemini) or a WB year (int) or None
         "repo_rate":      repo_rate,
         "next_mpc_meeting": next_mpc,
         "inr_usd":        inr_usd,

@@ -15,30 +15,26 @@
 <title>ArthSpandan | India Macro Intelligence</title>
 <meta name="description" content="ArthSpandan is an AI-powered macroeconomic intelligence platform tracking India's economic pulse, slowdown signals, inflation, GDP, repo rate, and recession risk.">
 <meta name="keywords" content="India economy, India slowdown, recession tracker India, GDP growth India, inflation India, repo rate India, macroeconomic indicators India, economic intelligence India">
-
 <meta name="author" content="ArthSpandan">
-
 <meta name="robots" content="index, follow">
-
 <meta property="og:title" content="ArthSpandan | India Macro Intelligence">
 <meta property="og:description" content="Track India's economic pulse with AI-powered macro intelligence, slowdown detection, inflation monitoring, and recession analysis.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://arthspandan.vercel.app">
 <meta property="og:image" content="https://arthspandan.vercel.app/static/img/logo.svg">
-
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="ArthSpandan | India Macro Intelligence">
 <meta name="twitter:description" content="AI-powered Indian macroeconomic signal tracker.">
 <meta name="twitter:image" content="https://arthspandan.vercel.app/static/img/logo.svg">
 <meta name="google-site-verification" content="0XDzu99bE_pP9nSra2OR0OjTxnmzpfVo_rP0CfaJydQ" />
-
 <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
 <link rel="apple-touch-icon" href="/static/img/logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/style.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap"></noscript>
+<link rel="stylesheet" href="/static/style.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" defer></script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -109,7 +105,7 @@
       <img src="/static/img/logo.svg" class="sb-logo" alt="IE" style="width:36px;height:36px;border-radius:8px;">
       <div class="sb-brand-text">
         <div class="sb-brand-title">ArthSpandan</div>
-        <div class="sb-brand-sub">AI-Powered · Live</div>
+        <div class="sb-brand-sub">AI-Powered · Real-Time &amp; High-Frequency</div>
       </div>
     </div>
 
@@ -120,7 +116,7 @@
         <span id="sb-status-label">Analyzing…</span>
       </div>
       <div class="sb-score-block">
-        <div class="sb-score-num" id="sb-score-num">—</div>
+        <div class="sk sb-score-num" id="sb-score-num">—</div>
         <div class="sb-score-label">Risk / 100</div>
         <div class="sb-score-bar"><div class="sb-score-fill" id="sb-score-fill"></div></div>
       </div>
@@ -156,15 +152,23 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         About
       </a>
+      <button class="sb-link" onclick="openConfigModal()" style="margin-top:15px; border-top: 1px solid rgba(255,255,255,0.08); padding-top:15px; background:none; border:none; width:100%; text-align:left; font:inherit; cursor:pointer; color:var(--sb-text);">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        Admin Settings
+      </button>
     </nav>
 
     <!-- Update time -->
     <div class="sb-footer">
       <div class="sb-update-label">Last updated</div>
-      <div class="sb-update-val" id="last-updated">—</div>
+      <div class="sk sb-update-val" id="last-updated">—</div>
     </div>
 
   </aside>
+
+  <!-- Mobile-only dimmed backdrop shown behind the sidebar when it's open,
+       so it reads as an overlay and can be tapped to dismiss. -->
+  <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="toggleSidebar()"></div>
 
   <!-- ── MAIN CONTENT ── -->
   <main class="main-content">
@@ -178,7 +182,17 @@
         <span class="topbar-title">ArthSpandan | India Macro Intelligence</span>
       </div>
       <div class="topbar-right">
-        <span class="live-dot-wrap"><span class="live-dot"></span>Live</span>
+        <button class="export-btn" id="export-csv-btn" onclick="exportCSV()" title="Download all current indicators as a CSV file" aria-label="Export CSV">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          <span class="export-btn-label">Export CSV</span>
+        </button>
+        <button class="export-btn" id="export-pdf-btn" onclick="exportReport()" title="Open a print-ready version of this dashboard (choose 'Save as PDF' in the print dialog)" aria-label="Export Report">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+          <span class="export-btn-label">Export Report</span>
+        </button>
+        <span class="live-dot-wrap" title="INR/USD, India VIX and other high-frequency market data refresh in real time. GDP, CPI, PMI and other macro indicators follow their official monthly/quarterly release schedule and are not live in the same sense.">
+          <span class="live-dot"></span>Active Feed
+        </span>
       </div>
     </div>
 
@@ -191,37 +205,37 @@
         <div class="macro-strip">
           <div class="macro-item">
             <div class="macro-label">GDP Growth</div>
-            <div class="macro-val" id="m-gdp">—</div>
+            <div class="sk macro-val" id="m-gdp">—</div>
             <div class="macro-delta down">↓ from 8.2%</div>
             <div class="src-badge-wrap" id="m-gdp-src"></div>
           </div>
           <div class="macro-item">
             <div class="macro-label">CPI Inflation</div>
-            <div class="macro-val" id="m-cpi">—</div>
-            <div class="macro-delta" id="m-cpi-d">—</div>
+            <div class="sk macro-val" id="m-cpi">—</div>
+            <div class="sk macro-delta" id="m-cpi-d">—</div>
             <div class="src-badge-wrap" id="m-cpi-src"></div>
           </div>
           <div class="macro-item">
             <div class="macro-label">Repo Rate</div>
-            <div class="macro-val" id="m-repo">—</div>
+            <div class="sk macro-val" id="m-repo">—</div>
             <div class="macro-delta neutral">RBI Policy</div>
             <div class="src-badge-wrap" id="m-repo-src"></div>
           </div>
           <div class="macro-item">
             <div class="macro-label">INR / USD</div>
-            <div class="macro-val" id="m-fx">—</div>
+            <div class="sk macro-val" id="m-fx">—</div>
             <div class="macro-delta down">↑ Weakening</div>
             <div class="src-badge-wrap" id="m-fx-src"></div>
           </div>
           <div class="macro-item">
             <div class="macro-label">Exports YoY</div>
-            <div class="macro-val" id="m-exp">—</div>
-            <div class="macro-delta down" id="m-exp-d">—</div>
+            <div class="sk macro-val" id="m-exp">—</div>
+            <div class="sk macro-delta down" id="m-exp-d">—</div>
             <div class="src-badge-wrap" id="m-exp-src"></div>
           </div>
           <div class="macro-item">
             <div class="macro-label">Unemployment</div>
-            <div class="macro-val" id="m-unemp">—</div>
+            <div class="sk macro-val" id="m-unemp">—</div>
             <div class="macro-delta" id="m-unemp-d">Urban CMIE</div>
             <div class="src-badge-wrap" id="m-unemp-src"></div>
           </div>
@@ -233,17 +247,22 @@
           <div class="card" id="section-ml">
             <div class="card-head">
               <span class="card-title">ML Model Prediction</span>
-              <span class="card-tag">Random Forest + GBM</span>
+              <button class="card-tag model-details-btn" onclick="openModelModal()" title="See methodology, CV vs LOO accuracy, and feature importance">Random Forest + GBM · Details ⓘ</button>
             </div>
             <div class="pred-wrap">
               <div class="gauge-box">
                 <canvas id="gaugeChart" width="180" height="110"></canvas>
-                <div class="gauge-num" id="gauge-num">—</div>
+                <div class="chart-sk chart-sk-round" id="gaugeChart-sk"></div>
+                <div class="sk gauge-num" id="gauge-num">—</div>
               </div>
               <div class="pred-info">
-                <div class="pred-pill" id="pred-pill">—</div>
-                <div class="pred-conf">Confidence: <b id="pred-conf">—</b></div>
-                <div class="prob-list" id="prob-list"></div>
+                <div class="sk pred-pill" id="pred-pill">—</div>
+                <div class="pred-conf">Confidence: <b id="pred-conf" class="sk">—</b></div>
+                <div class="prob-list" id="prob-list">
+                  <div class="prob-row"><span class="prob-lbl">Slowdown</span><div class="prob-track"><div class="prob-fill sk" style="width:100%"></div></div><span class="prob-pct sk">00%</span></div>
+                  <div class="prob-row"><span class="prob-lbl">Stable</span><div class="prob-track"><div class="prob-fill sk" style="width:100%"></div></div><span class="prob-pct sk">00%</span></div>
+                  <div class="prob-row"><span class="prob-lbl">Warning</span><div class="prob-track"><div class="prob-fill sk" style="width:100%"></div></div><span class="prob-pct sk">00%</span></div>
+                </div>
                 <div class="model-stats">
                   <div class="stat-row"><span>CV Accuracy</span><b>~80%</b></div>
 <div class="stat-row"><span>Training data</span><b>52 quarters</b></div>
@@ -258,9 +277,66 @@
               <span class="card-title">Sector Health</span>
               <span class="card-tag">Click to drill down</span>
             </div>
-            <div class="sector-grid" id="sector-grid"></div>
+            <div class="sector-grid" id="sector-grid">
+              <div class="sec-card"><div class="sec-name">Manufacturing (PMI)</div><div class="sec-val sk">00.0</div><span class="sec-badge good sk">Healthy</span></div>
+              <div class="sec-card"><div class="sec-name">Banking &amp; Finance</div><div class="sec-val sk">00.0%</div><span class="sec-badge good sk">Healthy</span></div>
+              <div class="sec-card"><div class="sec-name">Agriculture</div><div class="sec-val sk">0.0%</div><span class="sec-badge good sk">Healthy</span></div>
+              <div class="sec-card"><div class="sec-name">Trade &amp; Exports</div><div class="sec-val sk">00%</div><span class="sec-badge good sk">Healthy</span></div>
+              <div class="sec-card"><div class="sec-name">Employment &amp; Labour</div><div class="sec-val sk">0.0%</div><span class="sec-badge good sk">Healthy</span></div>
+            </div>
           </div>
 
+        </div>
+
+        <!-- Foundation Score row -->
+        <div class="card" id="section-foundation">
+          <div class="card-head">
+            <span class="card-title">Foundation Score</span>
+            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+              <span class="card-tag">Same 18 indicators · transparent threshold check</span>
+              <button class="threshold-toggle-btn" id="threshold-toggle-btn" onclick="toggleThresholdPanel()">⚙ Adjust Thresholds</button>
+            </div>
+          </div>
+          <div class="foundation-wrap">
+            <div class="foundation-summary">
+              <div class="sk foundation-num" id="foundation-num">—</div>
+              <div class="sk foundation-sub" id="foundation-sub">—</div>
+              <p class="foundation-note">Unlike the ML model above (a trained ensemble forecasting next quarter), this score is a plain count of how many of the same indicators are currently past a known weak-zone threshold — no prediction, just today's snapshot, fully explainable.</p>
+            </div>
+             <div class="foundation-list" id="foundation-list">
+               <div class="sk foundation-row" style="height:35px; margin: 8px 0; border-radius: 6px;"></div>
+               <div class="sk foundation-row" style="height:35px; margin: 8px 0; border-radius: 6px;"></div>
+               <div class="sk foundation-row" style="height:35px; margin: 8px 0; border-radius: 6px;"></div>
+             </div>
+          </div>
+          <div class="threshold-panel" id="threshold-panel" style="display:none">
+            <div class="threshold-panel-head">
+              <div>
+                <div class="threshold-panel-title">Sandbox: drag a line, see the count change</div>
+                <div class="threshold-panel-sub">Moves the red-zone threshold for that indicator only. Doesn't change any underlying data — release a slider to ask the backend for the recomputed score.</div>
+              </div>
+              <button class="threshold-reset-btn" id="threshold-reset-btn" onclick="resetThresholds()">Reset to defaults</button>
+            </div>
+            <div class="threshold-sliders-wrap">
+              <div class="threshold-sliders" id="threshold-sliders"></div>
+              <div class="threshold-loading-overlay" id="threshold-loading-overlay" aria-live="polite" aria-label="Recomputing score">
+                <div class="spinner"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Historical Shock Overlay -->
+        <div class="card" id="section-shock">
+          <div class="card-head">
+            <span class="card-title">Historical Shock Overlay</span>
+            <span class="card-tag">Real model, run on real historical quarters</span>
+          </div>
+          <p class="shock-intro">See what the same trained model actually output during India's most-discussed slowdown episodes — pulled straight from its own training data, not re-estimated.</p>
+          <div class="shock-btn-row" id="shock-btn-row"></div>
+          <div class="shock-body" id="shock-body">
+            <div class="shock-placeholder" id="shock-placeholder">Pick a period above to compare it against today.</div>
+          </div>
         </div>
 
       </section>
@@ -330,7 +406,16 @@
             <span class="card-title">Additional Indicators</span>
             <span class="card-tag">GST · NPCI · Grid-India · Railways · NSE</span>
           </div>
-          <div class="extra-grid" id="extra-grid"></div>
+          <div class="extra-grid" id="extra-grid">
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+            <div class="extra-card sk" style="height:82px; border-radius:10px;"></div>
+          </div>
         </div>
 
         <!-- HF Indicators -->
@@ -339,7 +424,13 @@
             <span class="card-title">High-Frequency Indicators</span>
             <span class="card-tag">RBI · MOSPI · CMIE · MoC</span>
           </div>
-          <div class="hf-grid" id="hf-grid"></div>
+          <div class="hf-grid" id="hf-grid">
+            <div class="hf-item sk" style="height:40px; margin: 4px; border-radius: 6px;"></div>
+            <div class="hf-item sk" style="height:40px; margin: 4px; border-radius: 6px;"></div>
+            <div class="hf-item sk" style="height:40px; margin: 4px; border-radius: 6px;"></div>
+            <div class="hf-item sk" style="height:40px; margin: 4px; border-radius: 6px;"></div>
+            <div class="hf-item sk" style="height:40px; margin: 4px; border-radius: 6px;"></div>
+          </div>
         </div>
 
       </section>
@@ -357,7 +448,7 @@
             <span><i class="dot" style="background:#22C55E"></i>Avg</span>
             <span><i class="red-dash"></i>Alert threshold</span>
           </div>
-          <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+          <div class="chart-wrap"><canvas id="trendChart"></canvas><div class="chart-sk" id="trendChart-sk"></div></div>
         </div>
 
         <div class="grid-2">
@@ -367,7 +458,7 @@
               <span class="card-title">Feature Importance</span>
               <span class="card-tag">Random Forest</span>
             </div>
-            <div class="chart-wrap" style="height:210px"><canvas id="featChart"></canvas></div>
+            <div class="chart-wrap" style="height:210px"><canvas id="featChart"></canvas><div class="chart-sk" id="featChart-sk"></div></div>
           </div>
 
           <div class="card">
@@ -392,7 +483,7 @@
                 <span class="toggle-label">Unemployment (%)</span>
               </label>
             </div>
-            <div class="chart-wrap" style="height:160px"><canvas id="histChart"></canvas></div>
+            <div class="chart-wrap" style="height:160px"><canvas id="histChart"></canvas><div class="chart-sk" id="histChart-sk"></div></div>
           </div>
 
         </div>
@@ -432,22 +523,17 @@
             <button class="learn-tab" data-cat="trade">Trade</button>
             <button class="learn-tab" data-cat="jobs">Jobs</button>
           </div>
-          <div class="def-grid" id="def-grid"></div>
+          <div class="def-grid" id="def-grid">
+            <div class="def-card sk" style="height:120px; border-radius:10px;"></div>
+            <div class="def-card sk" style="height:120px; border-radius:10px;"></div>
+            <div class="def-card sk" style="height:120px; border-radius:10px;"></div>
+          </div>
           <div class="ask-box">
             <div class="ask-header">
               <div class="ask-title">Ask the AI</div>
               <div class="ask-sub">Ask anything about India's economy — in plain English</div>
             </div>
-            <div class="suggest-row" id="suggest-row">
-              <button class="suggest-btn" onclick="askSuggested(this)">Why does my EMI go up when the repo rate rises?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">What does an "economic slowdown" actually mean for India?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">What happens if PMI falls below 50?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">How does inflation affect an average household?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">What are the main reasons GDP growth slows down?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">Why does the stock market fall when FIIs pull out money?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">What does Core Sector Growth of 0.5% mean for the economy?</button>
-              <button class="suggest-btn" onclick="askSuggested(this)">Why does rural wage growth matter as an economic indicator?</button>
-            </div>
+            <div class="suggest-row" id="suggest-row"></div>
             <div class="chat-messages" id="chat-messages">
               <div class="chat-msg bot-msg">
                 <div class="msg-avatar"><img src="/static/img/bot-avatar.svg" alt="AI" width="32" height="32"></div>
@@ -506,6 +592,267 @@
   </main>
 </div><!-- /app-shell -->
 
+<!-- ── ADMIN SETTINGS MODAL ── -->
+<div class="modal-overlay" id="config-modal-overlay" style="display:none" onclick="if(event.target===this) closeConfigModal()">
+  <div class="modal-box" style="max-width:650px">
+    <div class="modal-head" style="margin-bottom:12px">
+      <span class="modal-title">Admin Command Center</span>
+      <button class="modal-close" onclick="closeConfigModal()" aria-label="Close">✕</button>
+    </div>
+
+    <!-- TABS (HIDDEN BY DEFAULT UNTIL AUTHENTICATED) -->
+    <div class="modal-tabs" id="config-modal-tabs" style="display:none; gap:10px; border-bottom:1.5px solid var(--border); padding-bottom:10px; margin-bottom:15px">
+      <button class="modal-tab active" onclick="switchConfigTab('edit')" id="tab-btn-edit">⚙️ Config Editor</button>
+      <button class="modal-tab" onclick="switchConfigTab('raw')" id="tab-btn-raw">📄 Raw JSON</button>
+      <button class="modal-tab" onclick="switchConfigTab('system')" id="tab-btn-system">⚡ System &amp; Model</button>
+    </div>
+
+    <div class="modal-body" style="padding-top:5px">
+      <!-- AUTH VIEW (VISIBLE BY DEFAULT) -->
+      <div id="config-auth-view">
+        <div class="modal-section" style="margin-bottom:15px">
+          <div class="modal-section-title">Security Verification Required</div>
+          <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:12px">Please enter the Admin Username and Password configured on Vercel to unlock the settings panel.</p>
+          <div style="margin-bottom:12px">
+            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Username</label>
+            <input type="text" id="admin-username-input" class="chat-input" style="width:100%" placeholder="Enter Username..." autocomplete="off">
+          </div>
+          <div style="margin-bottom:15px">
+            <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Password / Token</label>
+            <input type="password" id="admin-token-input" class="chat-input" style="width:100%" placeholder="Enter Password..." autocomplete="new-password" onkeydown="if(event.key==='Enter') authenticateAdmin()">
+          </div>
+          <button class="chat-send" onclick="authenticateAdmin()" style="width:100%;height:40px">Authenticate &amp; Unlock</button>
+          <div id="auth-error-msg" style="color:var(--red);font-size:12px;margin-top:8px;text-align:center;font-weight:600"></div>
+        </div>
+      </div>
+      
+      <!-- TAB 1: CONFIG FIELDS VIEW -->
+      <div id="config-fields-view" style="display:none">
+        <div class="modal-section" style="margin-bottom:15px">
+          <div class="modal-section-title">Manual Indicator Configurations (config.json)</div>
+          <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Modify high-frequency and supply/demand indicators. Saved values will overwrite local config and re-trigger predictions.</p>
+          
+          <div class="config-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">WPI Inflation (%)</label>
+              <input type="number" step="0.01" id="cfg-wpi" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Core Sector Growth (%)</label>
+              <input type="number" step="0.01" id="cfg-core" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Capacity Utilization (%)</label>
+              <input type="number" step="0.01" id="cfg-cap-util" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Corporate Earnings PAT (%)</label>
+              <input type="number" step="0.01" id="cfg-corp-earning" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Private Consumption (PFCE) (%)</label>
+              <input type="number" step="0.01" id="cfg-pfce" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Repo Rate (%)</label>
+              <input type="number" step="0.01" id="cfg-repo" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Next MPC Meeting Date</label>
+              <input type="text" id="cfg-mpc" class="chat-input" style="width:100%" placeholder="e.g. 3–5 Aug 2026">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Fallback GDP Growth (%)</label>
+              <input type="number" step="0.01" id="cfg-fallback-gdp" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Fallback CPI Inflation (%)</label>
+              <input type="number" step="0.01" id="cfg-fallback-cpi" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Fallback INR/USD Rate</label>
+              <input type="number" step="0.01" id="cfg-fallback-inr" class="chat-input" style="width:100%">
+            </div>
+          </div>
+
+          <button class="chat-send" onclick="saveConfiguration()" style="width:100%;margin-bottom:10px;height:40px">Save Configuration</button>
+
+          <!-- CSV Append Form -->
+          <details style="margin-top:15px; border-top:1.5px solid var(--border); padding-top:15px">
+            <summary style="font-size:12.5px; font-weight:700; color:var(--text); cursor:pointer; margin-bottom:10px; user-select:none">➕ Add New Labeled Quarter to Dataset (CSV)</summary>
+            <p class="modal-text" style="font-size:11px; color:var(--muted); margin-bottom:10px">Append a new quarter to model's training CSV. Then go to <i>System &amp; Model</i> tab to retrain.</p>
+            
+            <div class="config-grid" style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:12px">
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Quarter Name</label>
+                <input type="text" id="add-q-name" class="chat-input" style="width:100%" placeholder="e.g. Q1_FY2026">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">GDP Growth (%)</label>
+                <input type="number" step="0.01" id="add-q-gdp" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">CPI Inflation (%)</label>
+                <input type="number" step="0.01" id="add-q-cpi" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">WPI Inflation (%)</label>
+                <input type="number" step="0.01" id="add-q-wpi" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Manufacturing PMI</label>
+                <input type="number" step="0.1" id="add-q-pmi" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Repo Rate (%)</label>
+                <input type="number" step="0.01" id="add-q-repo" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Exports YoY (%)</label>
+                <input type="number" step="0.01" id="add-q-exports" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Core Sector Growth (%)</label>
+                <input type="number" step="0.01" id="add-q-core" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Capacity Utilization (%)</label>
+                <input type="number" step="0.01" id="add-q-cap" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Corporate PAT Growth (%)</label>
+                <input type="number" step="0.01" id="add-q-corp" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">PFCE Growth (%)</label>
+                <input type="number" step="0.01" id="add-q-pfce" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">INR/USD Rate</label>
+                <input type="number" step="0.01" id="add-q-inr" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Unemployment (%)</label>
+                <input type="number" step="0.01" id="add-q-unemp" class="chat-input" style="width:100%">
+              </div>
+              <div>
+                <label style="font-size:10px; font-weight:600; display:block; margin-bottom:3px">Economic Label</label>
+                <select id="add-q-label" class="chat-input" style="width:100%; height:38px; background:var(--surface); border:1.5px solid var(--border); border-radius:8px; padding-left:8px">
+                  <option value="Stable">Stable</option>
+                  <option value="Warning">Warning</option>
+                  <option value="Slowdown">Slowdown</option>
+                </select>
+              </div>
+            </div>
+            <button class="chat-send" onclick="addLabeledQuarter()" style="width:100%; height:38px; background:#047857; margin-bottom:10px">Add Quarter to CSV</button>
+          </details>
+        </div>
+      </div>
+
+      <!-- TAB 2: RAW JSON VIEW -->
+      <div id="config-raw-view" style="display:none">
+        <div class="modal-section" style="margin-bottom:15px">
+          <div class="modal-section-title">Raw config.json Codebase View</div>
+          <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:8px">View the raw configuration state currently active in memory.</p>
+          <div class="admin-terminal" style="height:250px; overflow-y:auto;">
+            <pre id="cfg-raw-code" style="margin:0; font-family:'JetBrains Mono',monospace; font-size:11px; color:#34D399;"></pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- TAB 3: SYSTEM & MODEL VIEW -->
+      <div id="config-system-view" style="display:none">
+        <div class="status-stat-grid">
+          <div class="status-stat-card">
+            <div class="status-stat-title">ML Model Type</div>
+            <div class="status-stat-val">Ensemble Classifier</div>
+            <div class="status-stat-desc">Random Forest + Gradient Boosting</div>
+          </div>
+          <div class="status-stat-card">
+            <div class="status-stat-title">Training Dataset</div>
+            <div class="status-stat-val">52 Labeled Quarters</div>
+            <div class="status-stat-desc">FY2013 – FY2025 (v2 Data)</div>
+          </div>
+          <div class="status-stat-card">
+            <div class="status-stat-title">Target Features</div>
+            <div class="status-stat-val">18 Features</div>
+            <div class="status-stat-desc">12 Base + 6 Derived Momentum Metrics</div>
+          </div>
+          <div class="status-stat-card">
+            <div class="status-stat-title">Model Health</div>
+            <div class="status-stat-val">Online (100% OK)</div>
+            <div class="status-stat-desc">StandardScaler pipeline loaded</div>
+          </div>
+        </div>
+
+        <div class="modal-section" style="border-top:1.5px solid var(--border);padding-top:15px">
+          <div class="modal-section-title">Ensemble Model &amp; Data Administration</div>
+          <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Trigger a live data refresh across all indicators or run cross-validation training on the dataset.</p>
+          
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px">
+            <button class="chat-send" id="refresh-ai-btn" onclick="triggerAIRefresh()" style="background:#1E293B;height:40px;margin-bottom:0">🔄 Refresh AI Data</button>
+            <button class="chat-send" id="retrain-model-btn" onclick="triggerModelRetrain()" style="background:#0F172A;height:40px;margin-bottom:0">🧠 Retrain ML Model</button>
+          </div>
+          
+          <!-- Developer Terminal -->
+          <div class="admin-terminal" id="admin-console">
+            <div class="terminal-line info">[SYS] ArthSpandan Command Console initialized.</div>
+            <div class="terminal-line info">[SYS] Standing by for user requests...</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+  </div>
+</div>
+
+
+<!-- ── MODEL METHODOLOGY MODAL ── -->
+<div class="modal-overlay" id="model-modal-overlay" style="display:none" onclick="if(event.target===this) closeModelModal()">
+  <div class="modal-box">
+    <div class="modal-head">
+      <span class="modal-title">Model Methodology</span>
+      <button class="modal-close" onclick="closeModelModal()" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body">
+
+      <div class="modal-section">
+        <div class="modal-section-title">Why CV accuracy and LOO accuracy differ</div>
+        <div class="modal-accuracy-row">
+          <div class="modal-accuracy-card">
+            <div class="modal-accuracy-num">~80%</div>
+            <div class="modal-accuracy-label">5-fold CV Accuracy</div>
+          </div>
+          <div class="modal-accuracy-card">
+            <div class="modal-accuracy-num">68.8%</div>
+            <div class="modal-accuracy-label">Leave-One-Out Accuracy</div>
+          </div>
+        </div>
+        <p class="modal-text">Both numbers come from the same 52 quarterly observations (FY2013–FY2025) and the same ensemble — the gap is what you'd expect from a small, highly time-correlated dataset, not a bug. 5-fold CV holds out roughly 10 quarters at a time, so each fold still has a broad mix of Stable/Warning/Slowdown periods to learn from. Leave-One-Out holds out a single quarter, so the model sometimes has to classify a quarter without ever having seen a neighboring quarter from the same episode — a harder, more conservative test. Reporting both, rather than just the flattering one, is deliberate: it's an honest signal of how much this model's accuracy should be trusted on a genuinely new, unprecedented quarter.</p>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Feature importance (Random Forest)</div>
+        <p class="modal-text" style="margin-bottom:10px">How much each input feature contributed to the trained Random Forest's decisions, in relative weight.</p>
+        <div class="chart-wrap" style="height:220px"><canvas id="modalFeatChart"></canvas></div>
+      </div>
+
+      <div class="modal-section">
+        <div class="modal-section-title">Training setup</div>
+        <div class="model-stats">
+          <div class="stat-row"><span>Algorithm</span><b>Random Forest + Gradient Boosting (ensemble)</b></div>
+          <div class="stat-row"><span>Training data</span><b>52 quarters, FY2013–FY2025</b></div>
+          <div class="stat-row"><span>Features</span><b>18 (12 raw indicators + 6 derived)</b></div>
+          <div class="stat-row"><span>Classes</span><b>Stable / Warning / Slowdown</b></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
 <script>
 // ── Sidebar nav ──
 function sbNavigate(el) {
@@ -514,12 +861,16 @@ function sbNavigate(el) {
   // Mobile: close sidebar after nav click
   if (window.innerWidth <= 768) {
     document.querySelector('.sidebar').classList.remove('open');
+    document.getElementById('sidebar-backdrop').classList.remove('show');
   }
 }
 function toggleSidebar() {
   if (window.innerWidth <= 768) {
-    // Mobile: toggle open class on sidebar
-    document.querySelector('.sidebar').classList.toggle('open');
+    // Mobile: toggle open class on sidebar + dim backdrop behind it so it
+    // reads as an overlay (and can be tapped to dismiss) instead of content
+    // just being silently covered up.
+    const isOpen = document.querySelector('.sidebar').classList.toggle('open');
+    document.getElementById('sidebar-backdrop').classList.toggle('show', isOpen);
   } else {
     // Desktop: toggle collapsed on app-shell
     document.querySelector('.app-shell').classList.toggle('sb-collapsed');
@@ -538,6 +889,6 @@ const observer = new IntersectionObserver(entries => {
 }, { threshold: 0.35 });
 document.querySelectorAll('.content-section').forEach(s => observer.observe(s));
 </script>
-<script src="/static/script.js"></script>
+<script src="/static/script.min.js?v=2.2" defer></script>
 </body>
 </html>

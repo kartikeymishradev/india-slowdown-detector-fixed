@@ -26,7 +26,7 @@ function mLabel(off) {
 }
 const TLABELS = Array.from({length:12},(_,i)=>mLabel(i-11));
 
-let trendChart=null, gaugeChart=null, featChart=null, histChart=null;
+let trendChart=null, gaugeChart=null, featChart=null, histChart=null, modalFeatChart=null;
 let selectedSec = 'manufacturing';
 const SEC_KEYS = ['manufacturing','banking','agriculture','trade','employment'];
 const SEC_ICONS = {
@@ -59,9 +59,25 @@ const HIST_DATA = {
   unemp:   [8.2, 8.0, 9.4, 13.2, 8.0, 7.8, 7.7, 8.1],
 };
 
-async function apiFetch(url) {
-  try { const r = await fetch(url); if(!r.ok) throw new Error(); return await r.json(); }
-  catch { return null; }
+// Removes the shimmering skeleton placeholders (see .sk in style.css) once
+// real values have been written into the DOM.
+function clearSkeletons() {
+  document.querySelectorAll('.sk').forEach(el => el.classList.remove('sk'));
+}
+
+async function apiFetch(url, options) {
+  try {
+    const r = await fetch(url, options);
+    if (!r.ok) {
+      const body = await r.text().catch(() => '');
+      console.error(`apiFetch failed: ${url} -> ${r.status} ${r.statusText}`, body);
+      return null;
+    }
+    return await r.json();
+  } catch (err) {
+    console.error(`apiFetch network error: ${url}`, err);
+    return null;
+  }
 }
 
 function setHeroBanner(risk, label) {
@@ -75,7 +91,10 @@ function setHeroBanner(risk, label) {
     scoreEl.title = `Risk Score ${risk}/100\nTop factors: ${topFactors}\n\n0–30: Low risk (Stable)\n31–60: Moderate (Watch)\n61–100: High risk (Slowdown)`;
     scoreEl.style.cursor = 'help';
   }
-  const fillEl = document.getElementById('sb-score-fill'); if(fillEl) fillEl.style.width = risk + '%';
+  // Use a GPU-accelerated transform instead of animating `width` — avoids
+  // layout recalculation / jank on mobile and eliminates layout shift (CLS).
+  const fillEl = document.getElementById('sb-score-fill');
+  if (fillEl) fillEl.style.transform = `scaleX(${Math.max(0, Math.min(100, risk)) / 100})`;
 
   const cfg = {
     'Stable':   ['green', 'Economy Stable', 'No immediate slowdown signals detected across major sectors'],
@@ -168,6 +187,8 @@ function buildGauge(risk) {
   const el = document.getElementById('gauge-num');
   el.textContent = risk + '/100';
   el.style.color = color;
+  const gaugeSk = document.getElementById('gaugeChart-sk');
+  if (gaugeSk) gaugeSk.classList.add('chart-sk-hidden');
 }
 
 function buildPrediction(pred) {
@@ -185,9 +206,201 @@ function buildPrediction(pred) {
   ).join('');
 }
 
+// Foundation Score -- transparent "how many of the model's own indicators are
+// currently weak" snapshot. Comes from app.py's compute_foundation_score(),
+// which reuses the exact same 12 raw indicators the ML model trains on, so
+// this card and the ML Model Prediction card above can never quietly
+// disagree about what data they looked at.
+let _sandboxUpdateInProgress = false;
+
+function buildFoundation(fs) {
+  const numEl = document.getElementById('foundation-num');
+  const subEl = document.getElementById('foundation-sub');
+  const listEl = document.getElementById('foundation-list');
+  if (!fs || fs.score == null) {
+    numEl.textContent = '—';
+    subEl.textContent = 'Not enough data yet';
+    listEl.innerHTML = '';
+    return;
+  }
+
+  // If this is a normal data refresh (not a sandbox recompute) and the
+  // threshold panel is open with custom overrides still active, the
+  // sliders would otherwise be left showing stale dragged positions next
+  // to a score that just silently reset to the real defaults underneath
+  // them. Keep the two in sync by resetting the sandbox along with it.
+  if (!_sandboxUpdateInProgress) {
+    const panel = document.getElementById('threshold-panel');
+    if (panel && panel.style.display !== 'none' && Object.keys(currentOverrides).length) {
+      currentOverrides = {};
+      renderThresholdSliders();
+    }
+  }
+
+  // Fraction format (e.g. "4/12") instead of a second "/100" score --
+  // the ML Model card above already owns the 0-100 risk scale, and having
+  // two differently-scaled "scores" on the same screen was confusing.
+  const ratio = fs.checked ? fs.red_zone.length / fs.checked : 0;
+  const color = ratio < 0.25 ? '#16A34A' : ratio < 0.55 ? '#D97706' : '#DC2626';
+  numEl.textContent = `${fs.red_zone.length}/${fs.checked}`;
+  numEl.style.color = color;
+  subEl.textContent = 'Warning Signs';
+  subEl.style.color = '';
+
+  if (fs.red_zone.length === 0) {
+    listEl.innerHTML = '<div class="foundation-empty">No indicators currently past their weak-zone threshold.</div>';
+    return;
+  }
+  listEl.innerHTML = fs.red_zone.map(item =>
+    `<div class="foundation-row">
+      <span class="foundation-row-label">${item.label}</span>
+      <span class="foundation-row-val">${item.value}</span>
+    </div>`
+  ).join('');
+}
+
+// ═══════════════════════════════════════════
+//  INTERACTIVE THRESHOLD ADJUSTMENTS (sandbox)
+// ═══════════════════════════════════════════
+// Lets the user drag each Foundation Score threshold and see the red-zone
+// count recompute -- via the REAL backend (/api/foundation-score/recompute),
+// not a client-side guess, so it can never silently drift from
+// compute_foundation_score() in app.py.
+let THRESHOLD_DEFS = [];
+let currentOverrides = {};
+
+async function loadThresholdDefs() {
+  if (THRESHOLD_DEFS.length) return THRESHOLD_DEFS;
+  const defs = await apiFetch('/api/foundation-thresholds');
+  THRESHOLD_DEFS = defs || [];
+  return THRESHOLD_DEFS;
+}
+
+function toggleThresholdPanel() {
+  const panel = document.getElementById('threshold-panel');
+  const btn = document.getElementById('threshold-toggle-btn');
+  const opening = panel.style.display === 'none';
+  panel.style.display = opening ? 'block' : 'none';
+  btn.classList.toggle('active', opening);
+  if (opening) renderThresholdSliders();
+}
+
+function getIndicatorValue(key) {
+  if (!window._cachedData || !window._cachedData.indicators) return null;
+  const data = window._cachedData.indicators;
+  if (key.startsWith("ds:")) {
+    const parts = key.split(":");
+    const side = parts[1];
+    const field = parts[2];
+    return data.demand_supply?.[side]?.[field]?.value;
+  }
+  return data[key];
+}
+
+async function renderThresholdSliders() {
+  const wrap = document.getElementById('threshold-sliders');
+  const defs = await loadThresholdDefs();
+  if (!defs.length) { wrap.innerHTML = '<div class="foundation-empty">Could not load threshold settings.</div>'; return; }
+  wrap.innerHTML = defs.map(t => {
+    const actualVal = getIndicatorValue(t.key);
+    const val = currentOverrides[t.key] != null ? currentOverrides[t.key] : (actualVal != null ? actualVal : t.default);
+    const dirty = currentOverrides[t.key] != null && currentOverrides[t.key] !== actualVal;
+    
+    // Check if value is in warning/red zone
+    const isRed = t.direction === 'gt' ? val > t.default : val < t.default;
+    const zoneClass = isRed ? 'red-zone-val' : 'green-zone-val';
+
+    return `
+      <div class="threshold-slider-item${dirty ? ' dirty' : ''}" id="ts-item-${cssId(t.key)}">
+        <div class="threshold-slider-top">
+          <span class="threshold-slider-label">${t.label}</span>
+          <span class="threshold-slider-val ${zoneClass}" id="ts-val-${cssId(t.key)}">${val}${t.unit} (Limit: ${t.direction === 'gt' ? '>' : '<'} ${t.default}${t.unit})</span>
+        </div>
+        <input type="range" min="${t.min}" max="${t.max}" step="${t.step}" value="${val}"
+          oninput="onThresholdInput('${t.key}', this.value, '${t.direction}', ${t.default}, '${t.unit}')"
+          onchange="onThresholdChange('${t.key}', this.value)">
+      </div>`;
+  }).join('');
+}
+
+function cssId(key) { return key.replace(/[^a-zA-Z0-9]/g, '_'); }
+
+function onThresholdInput(key, value, direction, limit, unit) {
+  const val = parseFloat(value);
+  const isRed = direction === 'gt' ? val > limit : val < limit;
+  const valEl = document.getElementById(`ts-val-${cssId(key)}`);
+  valEl.textContent = `${value}${unit} (Limit: ${direction === 'gt' ? '>' : '<'} ${limit}${unit})`;
+  if (isRed) {
+    valEl.className = 'threshold-slider-val red-zone-val';
+  } else {
+    valEl.className = 'threshold-slider-val green-zone-val';
+  }
+  document.getElementById(`ts-item-${cssId(key)}`).classList.add('dirty');
+}
+
+let _thresholdRequestSeq = 0; // guards against a slow older request overwriting a newer one
+
+async function onThresholdChange(key, value) {
+  // Fires when the user releases the slider -- ask the real backend to
+  // recompute the Foundation Score under this custom threshold.
+  currentOverrides[key] = parseFloat(value);
+  const listEl = document.getElementById('foundation-list');
+  const subEl = document.getElementById('foundation-sub');
+  const overlay = document.getElementById('threshold-loading-overlay');
+  const sliders = document.querySelectorAll('#threshold-sliders input[type="range"]');
+
+  const seq = ++_thresholdRequestSeq;
+  listEl.style.opacity = '0.5';
+  overlay.classList.add('active');           // show spinner
+  sliders.forEach(s => s.disabled = true);   // block dragging another slider mid-request
+
+  try {
+    const fs = await apiFetch('/api/foundation-score/recompute', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ overrides: currentOverrides })
+    });
+    if (seq !== _thresholdRequestSeq) return; // a newer request already landed, ignore this stale one
+    if (fs) {
+      _sandboxUpdateInProgress = true;
+      buildFoundation(fs);
+      _sandboxUpdateInProgress = false;
+    } else {
+      // Don't fail silently -- make it obvious the score on screen is now
+      // stale/out of sync with the sliders, and point at the console for detail.
+      subEl.textContent = '⚠ Could not reach the server to recompute — check console / that Flask is running';
+      subEl.style.color = 'var(--red)';
+    }
+  } finally {
+    if (seq === _thresholdRequestSeq) {
+      listEl.style.opacity = '1';
+      overlay.classList.remove('active');
+      sliders.forEach(s => s.disabled = false);
+    }
+  }
+}
+
+async function resetThresholds() {
+  currentOverrides = {};
+  await renderThresholdSliders();
+  // Restore the official score from whatever we last loaded.
+  if (window._cachedData) buildFoundation(window._cachedData.foundation_score);
+}
+
 function secStatus(s) {
-  if (s.higher_good) return s.value >= s.avg ? 'good' : s.value > s.threshold ? 'warn' : 'bad';
-  return s.value <= s.avg ? 'good' : s.value < s.threshold ? 'warn' : 'bad';
+  // Indicators like PMI have a well-known "expansion vs contraction" line
+  // (50) that matters more than being slightly below the 12-month average.
+  // For those, set warn_below_avg:false so a value on the healthy side of
+  // the threshold reads as "Healthy" instead of being downgraded to
+  // "Watch" just for sitting under the average.
+  if (s.higher_good) {
+    if (s.value >= s.avg) return 'good';
+    if (s.warn_below_avg === false) return s.value > s.threshold ? 'good' : 'bad';
+    return s.value > s.threshold ? 'warn' : 'bad';
+  }
+  if (s.value <= s.avg) return 'good';
+  if (s.warn_below_avg === false) return s.value < s.threshold ? 'good' : 'bad';
+  return s.value < s.threshold ? 'warn' : 'bad';
 }
 
 function buildSectors(sectors) {
@@ -254,11 +467,13 @@ function buildTrend(s) {
       }
     }
   });
+  const trendSk = document.getElementById('trendChart-sk');
+  if (trendSk) trendSk.classList.add('chart-sk-hidden');
 }
 
 function buildDS(ds) {
   if (!ds || (!ds.demand && !ds.supply)) return;
-  const colorMap = { green:'#22C55E', amber:'#F59E0B', red:'#EF4444', blue:'#3B82F6' };
+  const colorMap = { green:'#15803D', amber:'#B45309', red:'#B91C1C', blue:'#1D4ED8' };
 
   ['demand','supply'].forEach(side => {
     const grid = document.getElementById(`ds-${side}-grid`);
@@ -330,11 +545,15 @@ function buildExtra(ext, derived, extendedAgeSeconds) {
     </div>`).join('');
 }
 
-function buildFeat() {
-  const ctx = document.getElementById('featChart').getContext('2d');
-  if (featChart) featChart.destroy();
+function buildFeat(canvasId) {
+  canvasId = canvasId || 'featChart';
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const isModal = canvasId === 'modalFeatChart';
+  if (isModal) { if (modalFeatChart) modalFeatChart.destroy(); } else { if (featChart) featChart.destroy(); }
   const sorted = Object.entries(FEAT_IMP).sort((a,b)=>b[1]-a[1]);
-  featChart = new Chart(ctx, {
+  const chart = new Chart(ctx, {
     type:'bar',
     data:{ labels:sorted.map(e=>e[0]), datasets:[{
       data: sorted.map(e=>+(e[1]*100).toFixed(1)),
@@ -347,7 +566,27 @@ function buildFeat() {
       plugins:{legend:{display:false}}
     }
   });
+  if (isModal) modalFeatChart = chart; else featChart = chart;
+  if (!isModal) {
+    const featSk = document.getElementById('featChart-sk');
+    if (featSk) featSk.classList.add('chart-sk-hidden');
+  }
 }
+
+// ═══════════════════════════════════════════
+//  MODEL METHODOLOGY DRILL-DOWN (modal)
+// ═══════════════════════════════════════════
+function openModelModal() {
+  document.getElementById('model-modal-overlay').style.display = 'flex';
+  // Build lazily -- only render the chart once the modal is actually visible.
+  buildFeat('modalFeatChart');
+  document.addEventListener('keydown', _modalEscHandler);
+}
+function closeModelModal() {
+  document.getElementById('model-modal-overlay').style.display = 'none';
+  document.removeEventListener('keydown', _modalEscHandler);
+}
+function _modalEscHandler(e) { if (e.key === 'Escape') closeModelModal(); }
 
 function buildHist() {
   const ctx = document.getElementById('histChart').getContext('2d');
@@ -371,6 +610,8 @@ function buildHist() {
       }
     }
   });
+  const histSk = document.getElementById('histChart-sk');
+  if (histSk) histSk.classList.add('chart-sk-hidden');
 }
 
 function initHistToggles() {
@@ -454,34 +695,240 @@ async function refreshAll() {
   document.getElementById('last-updated').textContent = 'Refreshing…';
   const data = await apiFetch('/api/predict');
   if (!data) {
-  document.getElementById('last-updated').textContent = 'Error – check connection';
-  clearInterval(loadingInterval);
-  document.getElementById("loader").style.display = "none";
-  return;
-}
+    document.getElementById('last-updated').textContent = 'Error – check connection';
+    clearSkeletons();
+    clearInterval(loadingInterval);
+    document.getElementById("loader").style.display = "none";
+    return;
+  }
   window._cachedData = data;
 
   const sectors = data.indicators.sectors;
   setHeroBanner(data.risk_score, data.prediction.label);
   setMacro(data);
-  buildGauge(data.risk_score);
   buildPrediction(data.prediction);
+  buildFoundation(data.foundation_score);
   buildSectors(sectors);
-  buildTrend(sectors[selectedSec]);
   buildHF(sectors);
   buildDS(data.indicators.demand_supply);
   buildExtra(data.indicators.extended_indicators, data.indicators.derived_features, data.grounding_status?.extended_age_seconds);
-  buildFeat();
-  buildHist();
-  initHistToggles();
   initLearnSection(data.indicators);
 
-   // Hide loader here
+  // Clear skeletons so layouts settle before Chart.js reads dimensions
+  clearSkeletons();
+
+  // Hide loader immediately so LCP element is visible
   clearInterval(loadingInterval);
-document.getElementById("loader").style.display = "none";
+  document.getElementById("loader").style.display = "none";
+
+  // Render the gauge immediately — it's above the fold on all devices
+  requestAnimationFrame(() => { buildGauge(data.risk_score); });
+
+  // Defer the heavy trend/feat/hist charts until #section-trends scrolls
+  // into view. On mobile these sections are far below the fold, so
+  // deferring them eliminates their Chart.js forced-reflow cost from the
+  // initial TBT measurement window entirely.
+  const trendsSection = document.getElementById('section-trends');
+  if (!trendsSection) return;
+
+  let trendsBuilt = false;
+  const buildTrendCharts = () => {
+    if (trendsBuilt) return;
+    trendsBuilt = true;
+    requestAnimationFrame(() => {
+      buildTrend(sectors[selectedSec]);
+      requestAnimationFrame(() => {
+        buildFeat();
+        requestAnimationFrame(() => {
+          buildHist();
+          initHistToggles();
+        });
+      });
+    });
+  };
+
+  const trendObserver = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) {
+      buildTrendCharts();
+      trendObserver.disconnect();
+    }
+  }, { rootMargin: '200px' });  // start building 200px before it enters viewport
+
+  trendObserver.observe(trendsSection);
 }
 
 refreshAll();
+
+
+// ═══════════════════════════════════════════
+//  HISTORICAL SHOCK OVERLAY
+// ═══════════════════════════════════════════
+// Compares today's live numbers against what the SAME trained model output
+// for real historical quarters, pulled from /api/shock-scenario/<key>
+// (which reads straight out of training_data_v2.csv and runs model.pkl on
+// it server-side -- this is real model inference, not a canned demo value).
+// Keep this list and HISTORICAL_SHOCKS in app.py in sync -- add a scenario
+// here (chronological order) and it just appears as a new button.
+const SHOCK_SCENARIOS = [
+  { key: 'live',                    label: 'Today (Live)' },
+  { key: 'demonetization_2016',     label: 'Demonetization' },
+  { key: 'ilfs_2018',               label: 'NBFC Crisis' },
+  { key: 'slowdown_2019',           label: '2019 Slowdown' },
+  { key: 'covid_2020',              label: 'COVID-19 Shock' },
+  { key: 'covid_second_wave_2021',  label: 'COVID 2nd Wave' },
+  { key: 'inflation_shock_2022',    label: '2022 Inflation Shock' },
+];
+const SHOCK_KEYS = SHOCK_SCENARIOS.map(s => s.key);
+
+function renderShockButtons() {
+  const row = document.getElementById('shock-btn-row');
+  if (!row) return;
+  row.innerHTML = SHOCK_SCENARIOS.map(s =>
+    `<button class="shock-btn${s.key === 'live' ? ' active' : ''}" id="shock-btn-${s.key}" onclick="loadShock('${s.key}')">${s.label}</button>`
+  ).join('');
+}
+renderShockButtons();
+
+function setActiveShockBtn(key) {
+  SHOCK_KEYS.forEach(k => {
+    const btn = document.getElementById(`shock-btn-${k}`);
+    if (btn) btn.classList.toggle('active', k === key);
+  });
+}
+
+async function loadShock(key) {
+  setActiveShockBtn(key);
+  const body = document.getElementById('shock-body');
+
+  if (key === 'live') {
+    body.innerHTML = '<div class="shock-placeholder" id="shock-placeholder">Pick a period above to compare it against today.</div>';
+    return;
+  }
+
+  body.innerHTML = '<div class="shock-loading">Running the model on that quarter…</div>';
+
+  const scenario = await apiFetch(`/api/shock-scenario/${key}`);
+  const today = window._cachedData;
+  if (!scenario || scenario.error || !today) {
+    body.innerHTML = '<div class="shock-placeholder">Could not load that historical scenario. Check that the Flask server is running.</div>';
+    return;
+  }
+
+  const t = today.indicators;
+  const todayRow = {
+    label: 'Today (Live)', period: 'Current', score: today.risk_score,
+    predLabel: today.prediction.label,
+    gdp_growth: t.gdp_growth, cpi: t.cpi, pmi: t.pmi, export_growth: t.export_growth, repo_rate: t.repo_rate
+  };
+  const shockRow = {
+    label: scenario.label, period: scenario.period, score: scenario.risk_score,
+    predLabel: scenario.prediction ? scenario.prediction.label : '—',
+    gdp_growth: scenario.indicators.gdp_growth, cpi: scenario.indicators.cpi, pmi: scenario.indicators.pmi,
+    export_growth: scenario.indicators.export_growth, repo_rate: scenario.indicators.repo_rate
+  };
+
+  const rows = [
+    { label: 'GDP Growth',    key: 'gdp_growth',    unit: '%', lowerIsWorse: true },
+    { label: 'Manufacturing PMI', key: 'pmi',        unit: '',  lowerIsWorse: true },
+    { label: 'CPI Inflation', key: 'cpi',            unit: '%', lowerIsWorse: false },
+    { label: 'Export Growth', key: 'export_growth',  unit: '%', lowerIsWorse: true },
+    { label: 'Repo Rate',     key: 'repo_rate',      unit: '%', lowerIsWorse: false },
+  ];
+
+  const tableRows = rows.map(r => {
+    const a = todayRow[r.key], b = shockRow[r.key];
+    const delta = b - a;
+    const shockIsWorse = r.lowerIsWorse ? delta < 0 : delta > 0;
+    const deltaClass = delta === 0 ? '' : (shockIsWorse ? 'shock-delta-worse' : 'shock-delta-better');
+    const deltaTxt = (delta > 0 ? '+' : '') + delta.toFixed(1) + r.unit;
+    return `<tr>
+      <td>${r.label}</td>
+      <td>${a}${r.unit}</td>
+      <td>${b}${r.unit}</td>
+      <td class="${deltaClass}">${deltaTxt}</td>
+    </tr>`;
+  }).join('');
+
+  const scoreColor = s => s == null ? 'var(--muted)' : s < 30 ? 'var(--green)' : s < 60 ? 'var(--amber)' : 'var(--red)';
+
+  body.innerHTML = `
+    <div class="shock-compare-grid">
+      <div class="shock-panel">
+        <div class="shock-panel-title">${todayRow.label}</div>
+        <div class="shock-panel-period">${todayRow.period}</div>
+        <div class="shock-panel-score" style="color:${scoreColor(todayRow.score)}">${todayRow.score}/100</div>
+        <div class="shock-panel-label" style="color:${scoreColor(todayRow.score)}">${todayRow.predLabel}</div>
+      </div>
+      <div class="shock-panel is-shock">
+        <div class="shock-panel-title">${shockRow.label}</div>
+        <div class="shock-panel-period">${shockRow.period}</div>
+        <div class="shock-panel-score" style="color:${scoreColor(shockRow.score)}">${shockRow.score != null ? shockRow.score + '/100' : '—'}</div>
+        <div class="shock-panel-label" style="color:${scoreColor(shockRow.score)}">${shockRow.predLabel}</div>
+      </div>
+    </div>
+    <div class="shock-table-wrap">
+      <table class="shock-table">
+        <thead><tr><th>Indicator</th><th>Today</th><th>${scenario.label}</th><th>Δ</th></tr></thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+    ${scenario.note ? `<div class="shock-note">⚠ ${scenario.note}</div>` : ''}
+    <div class="shock-footnote">Historical figures are pulled directly from the same 52-quarter training_data_v2.csv the model was fit on (real quarter: ${scenario.quarter}, originally labeled "${scenario.dataset_label}"). The model's Warning/Slowdown output above is real inference run against that quarter, not a hand-picked demo number.</div>
+  `;
+}
+
+// ═══════════════════════════════════════════
+//  AUTOMATED EXPORT & REPORTING
+// ═══════════════════════════════════════════
+function flattenIndicators(obj, prefix, out) {
+  out = out || {};
+  for (const [k, v] of Object.entries(obj || {})) {
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+      flattenIndicators(v, key, out);
+    } else if (!Array.isArray(v)) {
+      out[key] = v;
+    }
+  }
+  return out;
+}
+
+function csvEscape(val) {
+  const s = String(val ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function exportCSV() {
+  const data = window._cachedData;
+  if (!data) { alert('Dashboard data is still loading — try again in a moment.'); return; }
+  const flat = flattenIndicators(data.indicators);
+  flat['risk_score'] = data.risk_score;
+  flat['prediction_label'] = data.prediction?.label;
+  flat['foundation_score_red_zone_count'] = data.foundation_score?.red_zone?.length;
+  flat['foundation_score_checked'] = data.foundation_score?.checked;
+
+  const rows = [['indicator', 'value'], ...Object.entries(flat)];
+  const csv = rows.map(r => r.map(csvEscape).join(',')).join('\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const stamp = new Date().toISOString().slice(0, 10);
+  a.href = url;
+  a.download = `arthspandan-indicators-${stamp}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function exportReport() {
+  // Uses the browser's native print dialog (choose "Save as PDF" as the
+  // destination) rather than bundling a PDF-generation library client-side --
+  // the print stylesheet (@media print in style.css) hides the sidebar/nav
+  // chrome so what prints is a clean report of the current dashboard state.
+  window.print();
+}
 
 // ═══════════════════════════════════════════
 //  AI-GROUNDED DATA REFRESH (manual button + background timer)
@@ -747,6 +1194,8 @@ function saveChatHistory() {
   try { sessionStorage.setItem('chat_history', JSON.stringify(CHAT_HISTORY.slice(-20))); } catch {}
 }
 
+
+
 // ── Cached answers for suggested questions (zero API calls) ──────────────────
 const CACHED_ANSWERS = {
   "Why does my EMI go up when the repo rate rises?":
@@ -765,19 +1214,181 @@ const CACHED_ANSWERS = {
     "India's GDP slowdown usually comes from a combination of: (1) Weak exports — global demand falls, IT and merchandise exports drop; (2) Low private investment — companies don't expand when uncertain; (3) High interest rates — RBI keeping rates high to fight inflation reduces borrowing; (4) Poor monsoon — bad harvest hurts rural income and demand; (5) Global factors — US recession or China slowdown affects India. The dashboard tracks all these signals — export growth, credit growth, PMI and unemployment together show which factor is driving any slowdown.",
 
   "Why does the stock market fall when FIIs pull out money?":
-    "FIIs (Foreign Institutional Investors) — big global funds like Blackrock, Vanguard — hold a significant chunk of Indian stocks. When they sell and pull money out: (1) Direct impact — selling pressure pushes stock prices down; (2) Rupee weakens — they convert rupees to dollars when leaving; (3) Sentiment effect — other investors panic-sell seeing FII outflows; (4) Liquidity tightens — less money in the market. FII outflow of ₹10,000+ Cr in a month is a warning sign. However, strong domestic investors (DIIs — mutual funds, LIC) now often absorb FII selling, making Indian markets more resilient than before."
+    "FIIs (Foreign Institutional Investors) — big global funds like Blackrock, Vanguard — hold a significant chunk of Indian stocks. When they sell and pull money out: (1) Direct impact — selling pressure pushes stock prices down; (2) Rupee weakens — they convert rupees to dollars when leaving; (3) Sentiment effect — other investors panic-sell seeing FII outflows; (4) Liquidity tightens — less money in the market. FII outflow of ₹10,000+ Cr in a month is a warning sign. However, strong domestic investors (DIIs — mutual funds, LIC) now often absorb FII selling, making Indian markets more resilient than before.",
+
+  "Why is the Indian Rupee weakening against the US Dollar?":
+    "The INR's value against the USD changes due to India's trade deficit (we import more value than we export) and global factors. When the US Federal Reserve raises interest rates, foreign investors pull capital out of India to invest in safe US bonds, creating dollar demand and weakening the Rupee. A weaker Rupee makes imports like crude oil expensive, feeding into domestic inflation, but benefits Indian IT companies and exporters.",
+
+  "What is the difference between CPI and WPI inflation?":
+    "CPI (Consumer Price Index) tracks retail prices paid directly by households, with a heavy weight on food (~46%) and services. It is RBI's main guide for rate decisions. WPI (Wholesale Price Index) measures prices at the factory gate, dominated by manufactured items (~64%) and fuel, reflecting producer costs and supply-chain pressures. When global commodity prices spike, WPI usually surges faster than CPI.",
+
+  "How does capacity utilization affect industrial growth?":
+    "Capacity utilization measures how much of factories' potential output is actually being used. If it remains below 70%, it indicates weak demand, meaning companies have no incentive to invest in new plants or hire. When it crosses 75% (measured quarterly by RBI's OBICUS survey), factories run close to full strength, which triggers corporate capital expenditure (Capex), job creation, and industrial expansion."
 };
+
+// ═══════════════════════════════════════════
+//  SUGGESTION CHIPS -- randomized static bank + live dynamic chips
+// ═══════════════════════════════════════════
+// The 8 evergreen questions above (CACHED_ANSWERS keys) are the static bank.
+// Instead of showing all 8 at once (visually heavy), each page load shows a
+// shuffled sample of them, mixed with 1-2 chips generated from *today's*
+// live numbers -- so the panel always has something that reflects what's
+// actually on the dashboard right now, without needing any extra API call
+// (all built client-side from window._cachedData).
+const STATIC_SUGGESTIONS = Object.keys(CACHED_ANSWERS);
+
+function shuffleArr(arr) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function buildDynamicChips(cached) {
+  if (!cached) return [];
+  const ind = cached.indicators || {};
+  const fs = cached.foundation_score;
+  const chips = [];
+
+  if (fs && fs.red_zone && fs.red_zone.length) {
+    const worst = fs.red_zone[0];
+    chips.push(`Why is the Foundation Score ${fs.red_zone.length}/${fs.checked} today?`);
+    chips.push(`Why is ${worst.label} at ${worst.value} a warning sign?`);
+  }
+  if (ind.pmi != null) chips.push(`What does a Manufacturing PMI of ${ind.pmi} tell us?`);
+  if (ind.cpi != null) chips.push(`Is ${ind.cpi}% CPI inflation good or bad for India right now?`);
+  if (ind.repo_rate != null) chips.push(`How does today's ${ind.repo_rate}% repo rate affect my EMI?`);
+  if (ind.export_growth != null) chips.push(`What's behind ${ind.export_growth}% export growth today?`);
+  if (ind.unemployment != null) chips.push(`What does ${ind.unemployment}% unemployment mean right now?`);
+
+  return chips;
+}
+
+function renderSuggestionChips() {
+  const row = document.getElementById('suggest-row');
+  if (!row) return;
+
+  const priorityStatic = [
+    "Why is the Indian Rupee weakening against the US Dollar?",
+    "What is the difference between CPI and WPI inflation?",
+    "How does capacity utilization affect industrial growth?"
+  ];
+  
+  const otherStatic = STATIC_SUGGESTIONS.filter(q => !priorityStatic.includes(q));
+  const dynamic = shuffleArr(buildDynamicChips(window._cachedData)).slice(0, 2);
+  
+  const picks = [];
+  
+  // Add dynamic chips (max 1)
+  if (dynamic.length > 0) {
+    picks.push({ q: dynamic[0], dynamic: true });
+  }
+  
+  // Add all 3 new priority static chips
+  priorityStatic.forEach(q => {
+    picks.push({ q: q, dynamic: false });
+  });
+  
+  // Fill remaining slots up to 5 chips
+  if (picks.length < 5) {
+    const needed = 5 - picks.length;
+    const extra = shuffleArr(otherStatic).slice(0, needed);
+    extra.forEach(q => {
+      picks.push({ q: q, dynamic: false });
+    });
+  }
+
+  const combined = shuffleArr(picks);
+
+  row.innerHTML = '';
+  combined.forEach(({ q, dynamic: isDynamic }) => {
+    const btn = document.createElement('button');
+    btn.className = 'suggest-btn' + (isDynamic ? ' dynamic' : '');
+    btn.type = 'button';
+    btn.title = isDynamic ? "Generated from today's live dashboard numbers" : '';
+    btn.textContent = q;
+    btn.addEventListener('click', () => askSuggested(btn));
+    row.appendChild(btn);
+  });
+}
 
 // ── Chatbot cooldown: 15 seconds between messages ───────────────────────────
 let _chatCooldownUntil = 0;
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// ═══════════════════════════════════════════
+//  "SHOW ME THE DATA" TOOLTIPS
+// ═══════════════════════════════════════════
+// When the AI's answer mentions a tracked metric by name, turn that phrase
+// into a hover target showing today's live value -- so "Manufacturing PMI"
+// in the AI's prose is backed by the actual number on the dashboard above it.
+const METRIC_DEFS = [
+  { pattern: 'manufacturing pmi',        key: 'pmi',                          unit: '' },
+  { pattern: 'pmi',                      key: 'pmi',                          unit: '' },
+  { pattern: 'cpi inflation',            key: 'cpi',                          unit: '%' },
+  { pattern: 'wpi inflation',            key: 'ds:supply:wpi_inflation',      unit: '%' },
+  { pattern: 'gdp growth',               key: 'gdp_growth',                   unit: '%' },
+  { pattern: 'repo rate',                key: 'repo_rate',                    unit: '%' },
+  { pattern: 'unemployment rate',        key: 'unemployment',                 unit: '%' },
+  { pattern: 'unemployment',             key: 'unemployment',                 unit: '%' },
+  { pattern: 'export growth',            key: 'export_growth',                unit: '%' },
+  { pattern: 'core sector growth',       key: 'ds:supply:core_sector_growth', unit: '%' },
+  { pattern: 'capacity utilization',     key: 'ds:supply:capacity_util',      unit: '%' },
+  { pattern: 'capacity utilisation',     key: 'ds:supply:capacity_util',      unit: '%' },
+  { pattern: 'corporate earnings',       key: 'ds:supply:corporate_earnings', unit: '%' },
+  { pattern: 'private consumption',      key: 'ds:demand:pfce_growth',        unit: '%' },
+  { pattern: 'foundation score',         key: '__foundation__',               unit: '' },
+  { pattern: 'inr/usd',                  key: 'inr_usd',                      unit: '' },
+  { pattern: 'inr-usd',                  key: 'inr_usd',                      unit: '' },
+].sort((a, b) => b.pattern.length - a.pattern.length); // longest phrase wins ("manufacturing pmi" before "pmi")
+
+function getLiveMetricValue(key, cached) {
+  if (!cached) return null;
+  if (key === '__foundation__') {
+    const fs = cached.foundation_score;
+    return fs ? `${fs.red_zone.length}/${fs.checked} indicators in a red zone` : null;
+  }
+  if (key.startsWith('ds:')) {
+    const [, side, field] = key.split(':');
+    const v = cached.indicators?.demand_supply?.[side]?.[field]?.value;
+    return v == null ? null : v;
+  }
+  return cached.indicators?.[key] ?? null;
+}
+
+function linkifyMetrics(rawText) {
+  const escaped = escapeHtml(rawText);
+  const cached = window._cachedData;
+  if (!cached) return escaped;
+
+  const escapedPatterns = METRIC_DEFS.map(d => d.pattern.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&'));
+  const master = new RegExp('\\b(' + escapedPatterns.join('|') + ')\\b', 'gi');
+
+  return escaped.replace(master, (match) => {
+    const lower = match.toLowerCase();
+    const def = METRIC_DEFS.find(d => d.pattern === lower);
+    if (!def) return match;
+    const val = getLiveMetricValue(def.key, cached);
+    if (val == null) return match;
+    return `<span class="metric-tip" title="Live value right now: ${val}${def.unit}">${match}</span>`;
+  });
+}
 
 function appendMsg(text, role) {
   const box = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = `chat-msg ${role==='user'?'user-msg':'bot-msg'}`;
+  const bubbleHtml = role === 'user' ? escapeHtml(text) : linkifyMetrics(text);
   div.innerHTML = `
     <div class="msg-avatar">${role==='user'?'<img src="/static/img/user-avatar.svg" alt="You" width="32" height="32">':'<img src="/static/img/bot-avatar.svg" alt="AI assistant" width="32" height="32">'}</div>
-    <div class="msg-bubble">${text}</div>`;
+    <div class="msg-bubble">${bubbleHtml}</div>`;
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
   return div;
@@ -796,9 +1407,34 @@ function showTyping() {
 
 function removeTyping() { document.getElementById('typing-indicator')?.remove(); }
 
+function buildDashboardContext() {
+  // Built entirely from data already sitting in window._cachedData -- zero
+  // extra network calls. Sent to the backend so it can answer questions
+  // like "why is the Foundation Score 4/12 today?" using the real numbers
+  // that are on screen right now.
+  const cached = window._cachedData;
+  if (!cached) return null;
+  const ind = cached.indicators || {};
+  const fs = cached.foundation_score;
+  return {
+    risk_score: cached.risk_score,
+    prediction_label: cached.prediction?.label,
+    foundation_red_zone_count: fs?.red_zone?.length,
+    foundation_checked: fs?.checked,
+    foundation_red_zone: (fs?.red_zone || []).slice(0, 12).map(r => ({ label: r.label, value: r.value })),
+    gdp_growth: ind.gdp_growth,
+    cpi: ind.cpi,
+    pmi: ind.pmi,
+    export_growth: ind.export_growth,
+    repo_rate: ind.repo_rate,
+    unemployment: ind.unemployment,
+    inr_usd: ind.inr_usd,
+  };
+}
+
 async function sendToGemini(question) {
   try {
-    const res  = await fetch('/api/learn', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({question, history: CHAT_HISTORY.slice(-6)}) });
+    const res  = await fetch('/api/learn', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({question, history: CHAT_HISTORY.slice(-6), context: buildDashboardContext()}) });
     const data = await res.json();
     return data.answer || 'Sorry, I could not generate an answer right now. Please try again.';
   } catch { return 'Network error — could not reach the server. Please refresh and try again.'; }
@@ -848,12 +1484,10 @@ async function sendQuestion() {
       btn.disabled = false;
       btn.textContent = 'Ask';
       btn.removeAttribute('data-cooldown');
-      btn.style.setProperty('--cd-pct', '100%');
     } else {
       btn.textContent = `${remaining}s`;
-      btn.style.setProperty('--cd-pct', `${Math.round(((15 - remaining) / 15) * 100)}%`);
     }
-  }, 250);
+  }, 1000);
   input.focus();
 }
 
@@ -867,10 +1501,386 @@ function initLearnSection(indicators) {
   renderDefCards();
   initLearnTabs();
   initLearnSearch();
+  renderSuggestionChips();
   // Restore chat history from session
   if (CHAT_HISTORY.length > 0) {
     const box = document.getElementById('chat-messages');
     box.innerHTML = ''; // clear default welcome msg
     CHAT_HISTORY.forEach(m => appendMsg(m.text, m.role === 'user' ? 'user' : 'bot'));
   }
+}
+
+function openConfigModal() {
+  document.getElementById('config-modal-overlay').style.display = 'flex';
+  
+  const storedUser = sessionStorage.getItem('admin_user') || '';
+  const storedToken = sessionStorage.getItem('admin_token') || '';
+  if (storedUser && storedToken) {
+    document.getElementById('admin-username-input').value = storedUser;
+    document.getElementById('admin-token-input').value = storedToken;
+    authenticateAdmin();
+  } else {
+    document.getElementById('config-auth-view').style.display = 'block';
+    document.getElementById('config-fields-view').style.display = 'none';
+    document.getElementById('config-raw-view').style.display = 'none';
+    document.getElementById('config-system-view').style.display = 'none';
+    document.getElementById('config-modal-tabs').style.display = 'none';
+    document.getElementById('admin-username-input').value = '';
+    document.getElementById('admin-token-input').value = '';
+    document.getElementById('auth-error-msg').textContent = '';
+  }
+}
+
+function closeConfigModal() {
+  document.getElementById('config-modal-overlay').style.display = 'none';
+}
+
+function authenticateAdmin() {
+  const user = document.getElementById('admin-username-input').value.trim();
+  const token = document.getElementById('admin-token-input').value.trim();
+  const headers = { 'Content-Type': 'application/json' };
+  if (user) {
+    headers['X-Admin-User'] = user;
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    headers['X-Admin-Token'] = token;
+  }
+  
+  const errMsg = document.getElementById('auth-error-msg');
+  errMsg.textContent = 'Verifying credentials...';
+  errMsg.style.color = 'var(--text)';
+  
+  fetch('/api/config', { headers: headers })
+    .then(async res => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Invalid Admin Username or Password');
+      return data;
+    })
+    .then(data => {
+      sessionStorage.setItem('admin_user', user);
+      sessionStorage.setItem('admin_token', token);
+      window._serverConfig = data;
+      
+      // Populate fields
+      document.getElementById('cfg-wpi').value = data.demand_supply.supply.wpi_inflation.value;
+      document.getElementById('cfg-core').value = data.demand_supply.supply.core_sector_growth.value;
+      document.getElementById('cfg-cap-util').value = data.demand_supply.supply.capacity_util.value;
+      document.getElementById('cfg-corp-earning').value = data.demand_supply.supply.corporate_earnings.value;
+      document.getElementById('cfg-pfce').value = data.demand_supply.demand.pfce_growth.value;
+      document.getElementById('cfg-repo').value = data.macro.repo_rate;
+      
+      document.getElementById('cfg-mpc').value = data.macro.next_mpc_meeting || '';
+      document.getElementById('cfg-fallback-gdp').value = data.fallback_defaults?.gdp_growth_pct || 7.7;
+      document.getElementById('cfg-fallback-cpi').value = data.fallback_defaults?.cpi_inflation_pct || 3.93;
+      document.getElementById('cfg-fallback-inr').value = data.fallback_defaults?.inr_usd || 94.5;
+      
+      // Unlock UI tabs & show first tab
+      document.getElementById('config-auth-view').style.display = 'none';
+      document.getElementById('config-modal-tabs').style.display = 'flex';
+      switchConfigTab('edit');
+    })
+    .catch(err => {
+      errMsg.textContent = err.message;
+      errMsg.style.color = 'var(--red)';
+    });
+}
+
+function switchConfigTab(tabName) {
+  // Toggle tab buttons active class
+  document.querySelectorAll('.modal-tab').forEach(btn => btn.classList.remove('active'));
+  document.getElementById(`tab-btn-${tabName}`).classList.add('active');
+  
+  // Hide all views
+  document.getElementById('config-fields-view').style.display = 'none';
+  document.getElementById('config-raw-view').style.display = 'none';
+  document.getElementById('config-system-view').style.display = 'none';
+  
+  // Show active view
+  if (tabName === 'edit') {
+    document.getElementById('config-fields-view').style.display = 'block';
+  } else if (tabName === 'raw') {
+    document.getElementById('config-raw-view').style.display = 'block';
+    // Format and display raw JSON
+    document.getElementById('cfg-raw-code').textContent = JSON.stringify(window._serverConfig, null, 2);
+  } else if (tabName === 'system') {
+    document.getElementById('config-system-view').style.display = 'block';
+  }
+}
+
+function logToConsole(msg, type = 'info') {
+  const consoleDiv = document.getElementById('admin-console');
+  if (!consoleDiv) return;
+  const time = new Date().toLocaleTimeString();
+  const line = document.createElement('div');
+  line.className = `terminal-line ${type}`;
+  line.textContent = `[${time}] ${msg}`;
+  consoleDiv.appendChild(line);
+  consoleDiv.scrollTop = consoleDiv.scrollHeight;
+}
+
+function saveConfiguration() {
+  if (!window._serverConfig) {
+    alert('No configuration data loaded.');
+    return;
+  }
+  
+  window._serverConfig.demand_supply.supply.wpi_inflation.value = parseFloat(document.getElementById('cfg-wpi').value);
+  window._serverConfig.demand_supply.supply.core_sector_growth.value = parseFloat(document.getElementById('cfg-core').value);
+  window._serverConfig.demand_supply.supply.capacity_util.value = parseFloat(document.getElementById('cfg-cap-util').value);
+  window._serverConfig.demand_supply.supply.corporate_earnings.value = parseFloat(document.getElementById('cfg-corp-earning').value);
+  window._serverConfig.demand_supply.demand.pfce_growth.value = parseFloat(document.getElementById('cfg-pfce').value);
+  window._serverConfig.macro.repo_rate = parseFloat(document.getElementById('cfg-repo').value);
+  
+  window._serverConfig.macro.next_mpc_meeting = document.getElementById('cfg-mpc').value.trim();
+  if (!window._serverConfig.fallback_defaults) window._serverConfig.fallback_defaults = {};
+  window._serverConfig.fallback_defaults.gdp_growth_pct = parseFloat(document.getElementById('cfg-fallback-gdp').value);
+  window._serverConfig.fallback_defaults.cpi_inflation_pct = parseFloat(document.getElementById('cfg-fallback-cpi').value);
+  window._serverConfig.fallback_defaults.inr_usd = parseFloat(document.getElementById('cfg-fallback-inr').value);
+  
+  const user = sessionStorage.getItem('admin_user') || '';
+  const token = sessionStorage.getItem('admin_token') || '';
+  const headers = { 'Content-Type': 'application/json' };
+  if (user) {
+    headers['X-Admin-User'] = user;
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    headers['X-Admin-Token'] = token;
+  }
+  
+  fetch('/api/config', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify(window._serverConfig)
+  })
+    .then(async res => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Server returned an error');
+      return data;
+    })
+    .then(data => {
+      alert('Configuration updated successfully!');
+      closeConfigModal();
+      refreshAll();
+    })
+    .catch(err => {
+      alert(`Save failed: ${err.message}`);
+    });
+}
+
+function triggerAIRefresh() {
+  const user = sessionStorage.getItem('admin_user') || '';
+  const token = sessionStorage.getItem('admin_token') || '';
+  const btn = document.getElementById('refresh-ai-btn');
+  const statusDiv = document.getElementById('refresh-status');
+  
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner"></span> Refreshing...';
+  }
+  if (statusDiv) {
+    statusDiv.style.color = 'var(--text)';
+    statusDiv.textContent = 'Triggering Gemini grounding... monitor console logs below.';
+  }
+  
+  logToConsole('>>> MANUAL FORCE-REFRESH TRIGGERED BY ADMIN', 'warn');
+  logToConsole('[INFO] Authenticating API credentials with server...', 'info');
+  
+  const headers = { 'Content-Type': 'application/json' };
+  if (user) {
+    headers['X-Admin-User'] = user;
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    headers['X-Admin-Token'] = token;
+  }
+  
+  fetch('/api/refresh-grounding', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify({})
+  })
+    .then(async res => {
+      logToConsole('[INFO] Server received request. Refresh pipeline running...', 'info');
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error(res.status === 504 
+          ? 'Server Timeout (504) — Google Search grounding took too long under high load. Please try again in a few minutes.' 
+          : `Server Error (${res.status}): ${res.statusText || 'Unknown error'}`);
+      }
+      if (!res.ok) throw new Error(data.error || 'Server returned an error');
+      return data;
+    })
+    .then(data => {
+      logToConsole('[SUCCESS] Gemini data fetch completed successfully.', 'success');
+      logToConsole(`[SUCCESS] Main indicators updated: ${data.grounding_updated}`, 'success');
+      logToConsole(`[SUCCESS] Extended high-frequency updated: ${data.extended_updated}`, 'success');
+      if (statusDiv) {
+        statusDiv.style.color = 'var(--green)';
+        statusDiv.textContent = 'Refresh completed successfully!';
+      }
+      alert('Grounding data refreshed successfully! Reloading page to apply updates...');
+      window.location.reload();
+    })
+    .catch(err => {
+      logToConsole(`[ERROR] Refresh pipeline failed: ${err.message}`, 'error');
+      if (statusDiv) {
+        statusDiv.style.color = 'var(--red)';
+        statusDiv.textContent = `Failed: ${err.message}`;
+      }
+      alert(`Refresh failed: ${err.message}`);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '🔄 Refresh AI Data';
+      }
+    });
+}
+
+function addLabeledQuarter() {
+  const fields = {
+    quarter: document.getElementById('add-q-name').value.trim(),
+    gdp_growth: parseFloat(document.getElementById('add-q-gdp').value),
+    cpi_inflation: parseFloat(document.getElementById('add-q-cpi').value),
+    wpi_inflation: parseFloat(document.getElementById('add-q-wpi').value),
+    pmi_manufacturing: parseFloat(document.getElementById('add-q-pmi').value),
+    repo_rate: parseFloat(document.getElementById('add-q-repo').value),
+    exports_yoy: parseFloat(document.getElementById('add-q-exports').value),
+    core_sector_growth: parseFloat(document.getElementById('add-q-core').value),
+    capacity_utilization: parseFloat(document.getElementById('add-q-cap').value),
+    corporate_earnings_growth: parseFloat(document.getElementById('add-q-corp').value),
+    pfce_growth: parseFloat(document.getElementById('add-q-pfce').value),
+    inr_usd: parseFloat(document.getElementById('add-q-inr').value),
+    unemployment: parseFloat(document.getElementById('add-q-unemp').value),
+    label: document.getElementById('add-q-label').value
+  };
+
+  if (!fields.quarter) {
+    alert('Please enter a Quarter name (e.g. Q1_FY2026).');
+    return;
+  }
+  for (const k in fields) {
+    if (k !== 'quarter' && isNaN(fields[k])) {
+      alert(`Please enter a valid numeric value for ${k.replace('_', ' ')}.`);
+      return;
+    }
+  }
+
+  const user = sessionStorage.getItem('admin_user') || '';
+  const token = sessionStorage.getItem('admin_token') || '';
+  const headers = { 
+    'Content-Type': 'application/json' 
+  };
+  if (user) {
+    headers['X-Admin-User'] = user;
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    headers['X-Admin-Token'] = token;
+  }
+
+  fetch('/api/admin/add-quarter', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify(fields)
+  })
+    .then(async res => {
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Server error');
+      return data;
+    })
+    .then(data => {
+      alert(data.message);
+      // Clear inputs
+      document.getElementById('add-q-name').value = '';
+      document.getElementById('add-q-gdp').value = '';
+      document.getElementById('add-q-cpi').value = '';
+      document.getElementById('add-q-wpi').value = '';
+      document.getElementById('add-q-pmi').value = '';
+      document.getElementById('add-q-repo').value = '';
+      document.getElementById('add-q-exports').value = '';
+      document.getElementById('add-q-core').value = '';
+      document.getElementById('add-q-cap').value = '';
+      document.getElementById('add-q-corp').value = '';
+      document.getElementById('add-q-pfce').value = '';
+      document.getElementById('add-q-inr').value = '';
+      document.getElementById('add-q-unemp').value = '';
+      
+      switchConfigTab('system');
+      logToConsole(`[SYS] Quarter ${fields.quarter} added. Ready to retrain model.`, 'warn');
+    })
+    .catch(err => {
+      alert(`Failed to add quarter: ${err.message}`);
+    });
+}
+
+function triggerModelRetrain() {
+  const user = sessionStorage.getItem('admin_user') || '';
+  const token = sessionStorage.getItem('admin_token') || '';
+  const btn = document.getElementById('retrain-model-btn');
+  
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner"></span> Retraining...';
+  }
+
+  logToConsole('>>> ECONOMIC MODEL RETRAINING TRIGGERED BY ADMIN', 'warn');
+  logToConsole('[INFO] Connecting to training pipeline subprocess...', 'info');
+
+  const headers = { 'Content-Type': 'application/json' };
+  if (user) {
+    headers['X-Admin-User'] = user;
+  }
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    headers['X-Admin-Token'] = token;
+  }
+
+  fetch('/api/admin/retrain', {
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify({})
+  })
+    .then(async res => {
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error(res.status === 504 
+          ? 'Server Timeout (504) — The model training process timed out.' 
+          : `Server Error (${res.status}): ${res.statusText || 'Unknown error'}`);
+      }
+      if (!res.ok) throw new Error(data.error || 'Training process returned an error');
+      return data;
+    })
+    .then(data => {
+      if (data.stdout) {
+        data.stdout.split('\n').forEach(line => {
+          if (line.trim()) {
+            if (line.startsWith('=')) {
+              logToConsole(line, 'info');
+            } else if (line.includes('Accuracy') || line.includes('Score')) {
+              logToConsole(line, 'success');
+            } else {
+              logToConsole(line, 'info');
+            }
+          }
+        });
+      }
+      logToConsole('[SUCCESS] Model re-trained and active state refreshed in memory.', 'success');
+      alert('Model retrained successfully! Reloading page to apply updates...');
+      window.location.reload();
+    })
+    .catch(err => {
+      logToConsole(`[ERROR] Training failed: ${err.message}`, 'error');
+      alert(`Retrain failed: ${err.message}`);
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = '🧠 Retrain ML Model';
+      }
+    });
 }

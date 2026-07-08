@@ -138,7 +138,7 @@ def _redis_get():
         if result.get("result"):
             return json.loads(result["result"])
     except Exception as e:
-        print(f"⚠️  Redis GET failed: {e}")
+        print(f"[WARN] Redis GET failed: {e}")
     return None
 
 
@@ -174,31 +174,15 @@ def _redis_set(data):
         with urllib.request.urlopen(req, timeout=5) as r:
             result = json.loads(r.read())
         if result.get("error"):
-            print(f"⚠️  Redis SET returned error: {result['error']}")
+            print(f"[WARN] Redis SET returned error: {result['error']}")
+        else:
+            print("[OK] Redis SET succeeded: Grounding cache successfully saved to Upstash Redis")
     except Exception as e:
-        print(f"⚠️  Redis SET failed: {e}")
+        print(f"[WARN] Redis SET failed: {e}")
 
 
 def _load_disk_cache():
-    """Load cache — tries Redis first (Vercel), falls back to disk (local dev).
-
-    IMPORTANT: ts:0 is a sentinel meaning "never successfully fetched", not a
-    real timestamp. It gets persisted to Redis/disk whenever _save_disk_cache()
-    runs before the first successful Gemini fetch (e.g. right after a fresh
-    deploy). If we blindly did _cache.update(saved["grounding"]) here, a
-    fresh cold-start container would load that ts:0 into memory and
-    get_grounding_status() would then report "Not yet fetched" forever, even
-    after a later successful refresh wrote a real ts to Redis from a
-    DIFFERENT container -- because this container's in-memory ts:0 looks
-    "already set" and the merge below has to be careful not to let it win.
-
-    We always take "data" from whatever was saved (so dashboard values still
-    populate), but only adopt "ts" if it's a real (>0) timestamp -- otherwise
-    we leave ts at its current in-memory value (0, i.e. unset) so that
-    get_grounding_status()'s "g_ts is None" check still correctly falls
-    through to re-check Redis on every call rather than caching a false
-    "never fetched" verdict for this container's lifetime."""
-
+    """Load cache — local disk file only (fast, no network block)."""
     def _apply(target_cache, section):
         if not section:
             return
@@ -207,17 +191,7 @@ def _load_disk_cache():
         raw_ts = section.get("ts")
         if raw_ts and float(raw_ts) > 0:
             target_cache["ts"] = float(raw_ts)
-        # else: leave target_cache["ts"] untouched (stays 0/unset) -- do NOT
-        # overwrite with the ts:0 sentinel.
 
-    # Try Redis first
-    saved = _redis_get()
-    if saved:
-        print("✅ Cache loaded from Redis")
-        _apply(_cache, saved.get("grounding"))
-        _apply(_extended_cache, saved.get("extended"))
-        return
-    # Fallback: disk cache
     try:
         if not os.path.exists(_CACHE_FILE):
             return
@@ -225,9 +199,9 @@ def _load_disk_cache():
             saved = json.load(f)
         _apply(_cache, saved.get("grounding"))
         _apply(_extended_cache, saved.get("extended"))
-        print("✅ Cache loaded from disk")
+        print("[OK] Cache loaded from disk")
     except Exception as e:
-        print(f"⚠️  Could not load grounding cache from disk: {e}")
+        print(f"[WARN] Could not load grounding cache from disk: {e}")
 
 
 def _save_disk_cache():
@@ -241,7 +215,58 @@ def _save_disk_cache():
         with open(_CACHE_FILE, "w") as f:
             json.dump(payload, f)
     except Exception as e:
-        print(f"⚠️  Could not save grounding cache to disk: {e}")
+        print(f"[WARN] Could not save grounding cache to disk: {e}")
+
+
+_last_redis_sync = 0
+_redis_sync_in_flight = False
+
+
+def sync_cache_if_needed():
+    """Sync cache from Upstash Redis asynchronously in a background thread
+    if we haven't checked in the last 60 seconds. This avoids blocking the request thread."""
+    global _last_redis_sync, _redis_sync_in_flight
+    now = time.time()
+    
+    # Always load from local disk file first if memory cache is empty
+    if _cache["data"] is None and _extended_cache["data"] is None:
+        _load_disk_cache()
+        
+    if now - _last_redis_sync > 60:
+        _last_redis_sync = now
+        if not _redis_sync_in_flight:
+            _redis_sync_in_flight = True
+            import threading
+            def _bg_sync():
+                global _redis_sync_in_flight
+                try:
+                    saved = _redis_get()
+                    if saved:
+                        def _apply(target_cache, section):
+                            if not section:
+                                return
+                            if section.get("data"):
+                                target_cache["data"] = section["data"]
+                            raw_ts = section.get("ts")
+                            if raw_ts and float(raw_ts) > 0:
+                                target_cache["ts"] = float(raw_ts)
+                        _apply(_cache, saved.get("grounding"))
+                        _apply(_extended_cache, saved.get("extended"))
+                        print("[OK] Grounding cache synced from Upstash Redis (background)")
+                        # Also save to local disk file so next container boot reads fast
+                        try:
+                            payload = {"grounding": _cache, "extended": _extended_cache}
+                            os.makedirs(os.path.dirname(_CACHE_FILE), exist_ok=True)
+                            with open(_CACHE_FILE, "w") as f:
+                                json.dump(payload, f)
+                        except:
+                            pass
+                except Exception as e:
+                    print(f"[WARN] Background Redis cache sync failed: {e}")
+                finally:
+                    _redis_sync_in_flight = False
+                    
+            threading.Thread(target=_bg_sync, daemon=True).start()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -302,9 +327,10 @@ def _get_key_pool(specific_env_var):
 def _call_with_fallback(api_key_pool, make_request):
     """Try make_request(api_key) for each key in api_key_pool, in order.
     On a quota/rate-limit error, mark that key exhausted until the next
-    UTC midnight and move to the next key. On any other exception, or once
-    every key has been tried, re-raise the last exception so the caller's
-    existing except-block / fallback-to-cache logic still applies.
+    UTC midnight and move to the next key. On any other exception (like a 504
+    timeout or gateway error), still log it and proceed to the next key in
+    the pool. Once every key has been tried, re-raise the last exception so
+    the caller's fallback-to-cache logic applies.
 
     Returns the result of the first successful call."""
     last_exc = None
@@ -320,12 +346,11 @@ def _call_with_fallback(api_key_pool, make_request):
                     f"⚠️  Gemini key ending …{api_key[-6:]} hit quota limit, "
                     f"marking exhausted for ~{int(cooldown/3600)}h, trying next key"
                 )
-                continue  # try the next key in the pool
             else:
-                # Not a quota error (bad key, network issue, etc.) -- no
-                # point burning through the rest of the pool for this one,
-                # but we still let the caller's except-block handle it.
-                raise
+                print(
+                    f"⚠️  Gemini key ending …{api_key[-6:]} failed with transient error: {e}. Trying next key in pool..."
+                )
+            continue  # try the next key in the pool
     # Every key in the pool was exhausted (or pool was empty)
     if last_exc:
         raise last_exc
@@ -343,12 +368,22 @@ Fields to find (use the latest available figure, prefer official sources: RBI, M
 - repo_rate: RBI's current policy repo rate % as set by the Monetary Policy Committee (number)
 - next_mpc_meeting: dates of the next scheduled RBI MPC meeting (string, e.g. "5-7 Aug 2026")
 - export_growth: latest merchandise exports YoY growth % from Ministry of Commerce (number)
+- gdp_growth: the headline Real GDP Growth YoY % for the LATEST released quarter, taken
+  EXCLUSIVELY from MOSPI's official provisional/quarterly GDP estimate press release.
+  Do NOT return private bank (SBI Ecowrap, ICRA, Nomura, etc.) forecasts, IMF/World Bank
+  projections, nominal GDP, or GVA growth -- only MOSPI's official real GDP YoY figure.
+- gdp_growth_period: the quarter/period this GDP figure is for (string, e.g. "Q4 FY2025-26")
+- cpi: the latest MONTHLY headline (all-India, combined) CPI inflation YoY %, as released by
+  MOSPI's monthly CPI press release. Do NOT return an annual/calendar-year average, food
+  inflation (CFPI), core inflation, rural-only, or urban-only sub-indices -- only the single
+  latest month's headline combined CPI YoY number.
+- cpi_month: the month/year this CPI figure is for (string, e.g. "May 2026")
 - source_note: one short string naming the sources actually used
 
 Respond with strictly this JSON shape and nothing else:
-{"pmi": 0.0, "pmi_month": "", "credit_growth": 0.0, "unemployment": 0.0, "agri_gva": 0.0, "repo_rate": 0.0, "next_mpc_meeting": "", "export_growth": 0.0, "source_note": ""}
+{"pmi": 0.0, "pmi_month": "", "credit_growth": 0.0, "unemployment": 0.0, "agri_gva": 0.0, "repo_rate": 0.0, "next_mpc_meeting": "", "export_growth": 0.0, "gdp_growth": 0.0, "gdp_growth_period": "", "cpi": 0.0, "cpi_month": "", "source_note": ""}
 
-If you cannot find a confident value for a field, omit that key entirely rather than guessing."""
+If you cannot find a confident value for a field from an official source, omit that key entirely rather than guessing or substituting a sub-index/forecast."""
 
 
 def _extract_json(text):
@@ -389,13 +424,12 @@ def fetch_grounded_indicators(force=False):
         # Read-only path: just hand back whatever we've got, no Gemini call,
         # no matter how stale. Freshness is now entirely the job of the
         # manual/periodic refresh path.
+        sync_cache_if_needed()
         return _cache["data"]
 
-    # Cache expired (or never populated) -- but are we still inside the
-    # burst-protection cooldown since the last attempt? If so, don't call
-    # Gemini again yet. Serve stale data if we have any, else None.
-    if (now - _cache["last_attempt"]) < MIN_CALL_INTERVAL_SECONDS:
-        return _cache["data"]  # may be None on first-ever call, or stale-but-usable
+    # Only apply burst cooldown if not a manual force-refresh
+    if not force and (now - _cache["last_attempt"]) < MIN_CALL_INTERVAL_SECONDS:
+        return _cache["data"]
 
     _cache["last_attempt"] = now
 
@@ -408,7 +442,10 @@ def fetch_grounded_indicators(force=False):
         from google.genai import types
 
         def _request(api_key):
-            client = genai.Client(api_key=api_key)
+            # Explicit HTTP timeout so a slow Gemini call fails fast and
+            # returns a clean error instead of running past Vercel's
+            # serverless function timeout.
+            client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=20000))
             return client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=FIELDS_PROMPT,
@@ -442,6 +479,16 @@ def fetch_grounded_indicators(force=False):
                 clean["next_mpc_meeting"] = parsed["next_mpc_meeting"]
         if "export_growth" in parsed and -60 <= float(parsed["export_growth"]) <= 60:
             clean["export_growth"] = round(float(parsed["export_growth"]), 2)
+        # Real GDP growth YoY -- sanity band rules out nominal-USD or
+        # multi-year-stale figures being mistaken for the current quarter.
+        if "gdp_growth" in parsed and -10 <= float(parsed["gdp_growth"]) <= 15:
+            clean["gdp_growth"] = round(float(parsed["gdp_growth"]), 2)
+            clean["gdp_growth_period"] = parsed.get("gdp_growth_period", "")
+        # Headline monthly CPI YoY -- sanity band rules out an annual average
+        # or a sub-index (food/core) sneaking in under the wrong label.
+        if "cpi" in parsed and 0 <= float(parsed["cpi"]) <= 15:
+            clean["cpi"] = round(float(parsed["cpi"]), 2)
+            clean["cpi_month"] = parsed.get("cpi_month", "")
         clean["source_note"] = parsed.get("source_note", "Gemini + Google Search grounding")
         clean["fetched_at"] = time.strftime("%d %b %Y, %I:%M %p")
 
@@ -515,9 +562,11 @@ def fetch_extended_indicators(force=False):
     now = time.time()
 
     if not force:
+        sync_cache_if_needed()
         return _extended_cache["data"]
 
-    if (now - _extended_cache["last_attempt"]) < EXTENDED_MIN_CALL_INTERVAL_SECONDS:
+    # Only apply burst cooldown if not a manual force-refresh
+    if not force and (now - _extended_cache["last_attempt"]) < EXTENDED_MIN_CALL_INTERVAL_SECONDS:
         return _extended_cache["data"]
 
     _extended_cache["last_attempt"] = now
@@ -531,7 +580,7 @@ def fetch_extended_indicators(force=False):
         from google.genai import types
 
         def _request(api_key):
-            client = genai.Client(api_key=api_key)
+            client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=20000))
             return client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=EXTENDED_FIELDS_PROMPT,
@@ -656,7 +705,7 @@ Structure your answer as:
 Be specific to India's current economic context. Do not use markdown headers, just flowing paragraphs."""
 
         def _request(api_key):
-            client = genai.Client(api_key=api_key)
+            client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=12000))
             return client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=prompt,
@@ -690,14 +739,20 @@ Be specific to India's current economic context. Do not use markdown headers, ju
 
 def refresh_all_grounding():
     """Force-refresh both the main grounding indicators and the extended
-    indicators by calling Gemini (respecting the burst-protection cooldown
-    and multi-key fallback chain on each). Returns a small status dict the
-    /api/refresh-grounding route can hand back to the frontend.
+    indicators concurrently by calling Gemini in parallel threads (respecting
+    the multi-key fallback chain on each). This keeps the total execution time
+    well below Vercel's 15-second Hobby plan serverless timeout limit.
 
     This never raises -- each underlying fetch already swallows its own
     exceptions and returns the last-known-good cached value on failure."""
-    grounding_result = fetch_grounded_indicators(force=True)
-    extended_result = fetch_extended_indicators(force=True)
+    from concurrent.futures import ThreadPoolExecutor
+    
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        f_grounding = executor.submit(fetch_grounded_indicators, force=True)
+        f_extended = executor.submit(fetch_extended_indicators, force=True)
+        grounding_result = f_grounding.result()
+        extended_result = f_extended.result()
+        
     return {
         "grounding_updated": grounding_result is not None,
         "extended_updated": extended_result is not None,
@@ -710,33 +765,14 @@ def get_grounding_status():
     """Lightweight status info for the frontend's 'Last refreshed X min ago'
     badge -- how old is each cache right now, in seconds. Returns None for a
     timestamp if that cache has never been successfully populated.
-    Always checks Redis first so Vercel cold-start containers report the
-    correct age instead of always showing 'Not yet fetched'."""
+    Uses in-memory values to guarantee zero blocking on database requests."""
+    sync_cache_if_needed()
     now = time.time()
 
     # In-memory ts (warm container, same process).
     # Use None sentinel — ts==0 means "never fetched", NOT a valid timestamp.
     g_ts = _cache.get("ts") or None      # converts 0 → None
     e_ts = _extended_cache.get("ts") or None
-
-    # If in-memory is empty (cold start / new container), read ts from Redis.
-    if g_ts is None or e_ts is None:
-        try:
-            saved = _redis_get()
-            if saved:
-                if g_ts is None:
-                    raw = saved.get("grounding", {}).get("ts")
-                    # Accept only a real timestamp (float > 0), not the
-                    # initial 0 sentinel that _save_disk_cache may have persisted
-                    # before the first successful Gemini fetch.
-                    if raw and float(raw) > 0:
-                        g_ts = float(raw)
-                if e_ts is None:
-                    raw = saved.get("extended", {}).get("ts")
-                    if raw and float(raw) > 0:
-                        e_ts = float(raw)
-        except Exception:
-            pass
 
     return {
         "grounding_age_seconds": int(now - g_ts) if g_ts else None,
