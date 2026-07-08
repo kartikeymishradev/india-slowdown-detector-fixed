@@ -721,11 +721,20 @@ async function refreshAll() {
   clearInterval(loadingInterval);
   document.getElementById("loader").style.display = "none";
 
-  // Stagger chart rendering across separate animation frames to break up
-  // long tasks and reduce Total Blocking Time (TBT). Each rAF yields back
-  // to the browser between charts, preventing the 1.8s blocking JS task.
-  requestAnimationFrame(() => {
-    buildGauge(data.risk_score);
+  // Render the gauge immediately — it's above the fold on all devices
+  requestAnimationFrame(() => { buildGauge(data.risk_score); });
+
+  // Defer the heavy trend/feat/hist charts until #section-trends scrolls
+  // into view. On mobile these sections are far below the fold, so
+  // deferring them eliminates their Chart.js forced-reflow cost from the
+  // initial TBT measurement window entirely.
+  const trendsSection = document.getElementById('section-trends');
+  if (!trendsSection) return;
+
+  let trendsBuilt = false;
+  const buildTrendCharts = () => {
+    if (trendsBuilt) return;
+    trendsBuilt = true;
     requestAnimationFrame(() => {
       buildTrend(sectors[selectedSec]);
       requestAnimationFrame(() => {
@@ -736,10 +745,20 @@ async function refreshAll() {
         });
       });
     });
-  });
+  };
+
+  const trendObserver = new IntersectionObserver((entries) => {
+    if (entries[0].isIntersecting) {
+      buildTrendCharts();
+      trendObserver.disconnect();
+    }
+  }, { rootMargin: '200px' });  // start building 200px before it enters viewport
+
+  trendObserver.observe(trendsSection);
 }
 
 refreshAll();
+
 
 // ═══════════════════════════════════════════
 //  HISTORICAL SHOCK OVERLAY
