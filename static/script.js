@@ -714,19 +714,29 @@ async function refreshAll() {
   buildExtra(data.indicators.extended_indicators, data.indicators.derived_features, data.grounding_status?.extended_age_seconds);
   initLearnSection(data.indicators);
 
-  // Clear skeletons first so that parent layouts settle before Chart.js is initialized
+  // Clear skeletons so layouts settle before Chart.js reads dimensions
   clearSkeletons();
 
-  // Paint the charts inside finalized containers to prevent forced reflows
-  buildGauge(data.risk_score);
-  buildTrend(sectors[selectedSec]);
-  buildFeat();
-  buildHist();
-  initHistToggles();
-
-  // Hide loader
+  // Hide loader immediately so LCP element is visible
   clearInterval(loadingInterval);
   document.getElementById("loader").style.display = "none";
+
+  // Stagger chart rendering across separate animation frames to break up
+  // long tasks and reduce Total Blocking Time (TBT). Each rAF yields back
+  // to the browser between charts, preventing the 1.8s blocking JS task.
+  requestAnimationFrame(() => {
+    buildGauge(data.risk_score);
+    requestAnimationFrame(() => {
+      buildTrend(sectors[selectedSec]);
+      requestAnimationFrame(() => {
+        buildFeat();
+        requestAnimationFrame(() => {
+          buildHist();
+          initHistToggles();
+        });
+      });
+    });
+  });
 }
 
 refreshAll();
