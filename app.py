@@ -11,7 +11,7 @@ import gzip
 import io
 import numpy as np
 import pandas as pd
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory, Response
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -290,6 +290,25 @@ def api_foundation_recompute():
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/robots.txt")
+def robots():
+    content = f"User-agent: *\nAllow: /\nSitemap: {request.url_root}sitemap.xml\n"
+    return Response(content, mimetype="text/plain")
+
+
+@app.route("/sitemap.xml")
+def sitemap():
+    content = f'''<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>{request.url_root}</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>'''
+    return Response(content, mimetype="application/xml")
 
 
 @app.route("/api/indicators")
