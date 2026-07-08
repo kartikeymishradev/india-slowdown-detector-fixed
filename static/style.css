@@ -349,6 +349,8 @@ a:hover {
   padding: 14px 16px;
   box-shadow: var(--shadow);
   border: 1px solid var(--border);
+  min-height: 100px;
+  contain: layout;
 }
 .macro-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 4px; }
 .macro-val   { font-family: var(--font-mono); font-size: 22px; font-weight: 700; color: var(--text); }
@@ -531,7 +533,7 @@ a:hover {
 /* ════════════════════════════════════════════
    DATA SOURCE BADGES
 ════════════════════════════════════════════ */
-.src-badge-wrap { margin-top: 4px; min-height: 18px; display: block; }
+.src-badge-wrap { margin-top: 4px; min-height: 20px; height: 20px; display: block; }
 .src-badge     { font-size: 10px; padding: 1px 6px; border-radius: 999px; font-weight: 600; white-space: nowrap; cursor: help; }
 .src-live      { background: #DCFCE7; color: #15803D; }
 .src-ai        { background: #DBEAFE; color: #1D4ED8; }
