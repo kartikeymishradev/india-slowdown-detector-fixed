@@ -421,7 +421,7 @@ def fetch_grounded_indicators(force=False):
             # Explicit HTTP timeout so a slow Gemini call fails fast and
             # returns a clean error instead of running past Vercel's
             # serverless function timeout.
-            client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=12000))
+            client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=20000))
             return client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=FIELDS_PROMPT,
@@ -555,7 +555,7 @@ def fetch_extended_indicators(force=False):
         from google.genai import types
 
         def _request(api_key):
-            client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=12000))
+            client = genai.Client(api_key=api_key, http_options=types.HttpOptions(timeout=20000))
             return client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=EXTENDED_FIELDS_PROMPT,
