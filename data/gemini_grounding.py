@@ -246,6 +246,23 @@ def _save_disk_cache():
         print(f"⚠️  Could not save grounding cache to disk: {e}")
 
 
+_last_redis_sync = 0
+
+
+def sync_cache_if_needed():
+    """Sync cache from Upstash Redis if we haven't checked in the last 60 seconds.
+    This ensures multiple serverless container instances can pick up updates
+    written by other instances or local PowerShell scripts within 60 seconds."""
+    global _last_redis_sync
+    now = time.time()
+    if now - _last_redis_sync > 60:
+        _last_redis_sync = now
+        try:
+            _load_disk_cache()
+        except Exception as e:
+            print(f"⚠️  sync_cache_if_needed failed: {e}")
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # MULTI-KEY FALLBACK CHAIN
 # ──────────────────────────────────────────────────────────────────────────────
@@ -401,6 +418,7 @@ def fetch_grounded_indicators(force=False):
         # Read-only path: just hand back whatever we've got, no Gemini call,
         # no matter how stale. Freshness is now entirely the job of the
         # manual/periodic refresh path.
+        sync_cache_if_needed()
         return _cache["data"]
 
     # Only apply burst cooldown if not a manual force-refresh
@@ -538,6 +556,7 @@ def fetch_extended_indicators(force=False):
     now = time.time()
 
     if not force:
+        sync_cache_if_needed()
         return _extended_cache["data"]
 
     # Only apply burst cooldown if not a manual force-refresh
@@ -741,6 +760,7 @@ def get_grounding_status():
     badge -- how old is each cache right now, in seconds. Returns None for a
     timestamp if that cache has never been successfully populated.
     Uses in-memory values to guarantee zero blocking on database requests."""
+    sync_cache_if_needed()
     now = time.time()
 
     # In-memory ts (warm container, same process).
