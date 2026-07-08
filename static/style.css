@@ -339,9 +339,10 @@ a:hover {
   display: grid;
   grid-template-columns: repeat(6, 1fr);
   gap: 10px;
+  height: 110px;
 }
-@media(max-width:960px)  { .macro-strip { grid-template-columns: repeat(3,1fr); } }
-@media(max-width:560px)  { .macro-strip { grid-template-columns: repeat(2,1fr); } }
+@media(max-width:960px)  { .macro-strip { grid-template-columns: repeat(3,1fr); height: 230px; } }
+@media(max-width:560px)  { .macro-strip { grid-template-columns: repeat(2,1fr); height: 350px; } }
 
 .macro-item {
   background: var(--surface);
@@ -349,8 +350,8 @@ a:hover {
   padding: 14px 16px;
   box-shadow: var(--shadow);
   border: 1px solid var(--border);
-  min-height: 100px;
-  contain: layout;
+  height: 110px;
+  box-sizing: border-box;
 }
 .macro-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin-bottom: 4px; }
 .macro-val   { font-family: var(--font-mono); font-size: 22px; font-weight: 700; color: var(--text); }
@@ -362,9 +363,12 @@ a:hover {
 /* ════════════════════════════════════════════
    GRID
 ════════════════════════════════════════════ */
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-height: 493px; }
-.grid-2 > .card { min-height: 300px; }
-@media(max-width:720px) { .grid-2 { grid-template-columns: 1fr; } }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; height: 330px; }
+.grid-2 > .card { height: 330px; box-sizing: border-box; }
+@media(max-width:720px) {
+  .grid-2 { grid-template-columns: 1fr; height: auto; }
+  .grid-2 > .card { height: auto; }
+}
 
 /* ════════════════════════════════════════════
    CARD
@@ -458,8 +462,8 @@ a:hover {
 /* ════════════════════════════════════════════
    SECTOR GRID
 ════════════════════════════════════════════ */
-.sector-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; min-height: 245px; }
-.sec-card { border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; cursor: pointer; transition: all .15s; }
+.sector-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; height: 244px; }
+.sec-card { border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; cursor: pointer; transition: all .15s; height: 76px; box-sizing: border-box; }
 .sec-card:hover  { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.08); }
 .sec-card.active { border-color: var(--blue); background: var(--blue-bg); }
 .sec-name  { font-size: 11px; color: var(--muted); margin-bottom: 4px; display: flex; align-items: center; gap: 5px; }
@@ -678,7 +682,7 @@ a:hover {
   .card-title { font-size: 13px; }
 
   /* Sector Health: single column reads better than a squeeze on phones */
-  .sector-grid { grid-template-columns: 1fr; min-height: 432px; }
+  .sector-grid { grid-template-columns: 1fr; height: 412px; }
 
   /* Foundation Score summary shouldn't force a fixed 220px column on narrow screens */
   .foundation-summary { flex: 1 1 100%; }
