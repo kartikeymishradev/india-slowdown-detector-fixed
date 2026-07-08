@@ -28,6 +28,7 @@ from data.gemini_grounding import (
 )
 
 app = Flask(__name__)
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
 CORS(app)
 
 

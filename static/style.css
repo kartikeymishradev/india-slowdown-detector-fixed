@@ -25,13 +25,13 @@
   --shadow:   0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
 
   /* Status colours */
-  --green:      #16A34A;
+  --green:      #15803D;
   --green-bg:   #F0FDF4;
   --green-border:#BBF7D0;
-  --amber:      #D97706;
+  --amber:      #B45309;
   --amber-bg:   #FFFBEB;
   --amber-border:#FDE68A;
-  --red:        #DC2626;
+  --red:        #B91C1C;
   --red-bg:     #FEF2F2;
   --red-border: #FECACA;
   --blue:       #1D4ED8;
@@ -360,7 +360,7 @@ a:hover {
 /* ════════════════════════════════════════════
    GRID
 ════════════════════════════════════════════ */
-.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; min-height: 493px; }
 @media(max-width:720px) { .grid-2 { grid-template-columns: 1fr; } }
 
 /* ════════════════════════════════════════════
@@ -576,11 +576,11 @@ a:hover {
 .def-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
 .def-name { font-size: 14px; font-weight: 700; color: var(--text); }
 .def-cat-badge { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; white-space: nowrap; flex-shrink: 0; }
-.cat-macro   { background: #EFF6FF; color: #2563EB; }
-.cat-market  { background: #FDF4FF; color: #9333EA; }
-.cat-banking { background: #F0FDF4; color: #16A34A; }
-.cat-trade   { background: #FFF7ED; color: #EA580C; }
-.cat-jobs    { background: #FFF1F2; color: #E11D48; }
+.cat-macro   { background: #EFF6FF; color: #1D4ED8; }
+.cat-market  { background: #FDF4FF; color: #7E22CE; }
+.cat-banking { background: #F0FDF4; color: #15803D; }
+.cat-trade   { background: #FFF7ED; color: #C2410C; }
+.cat-jobs    { background: #FFF1F2; color: #BE123C; }
 .def-simple { font-size: 13px; color: var(--text); line-height: 1.6; margin-bottom: 10px; }
 .def-example { font-size: 12px; color: var(--muted); background: var(--bg); border-radius: 6px; padding: 8px 10px; line-height: 1.5; display: none; }
 .def-card.expanded .def-example { display: block; }

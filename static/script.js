@@ -473,7 +473,7 @@ function buildTrend(s) {
 
 function buildDS(ds) {
   if (!ds || (!ds.demand && !ds.supply)) return;
-  const colorMap = { green:'#22C55E', amber:'#F59E0B', red:'#EF4444', blue:'#3B82F6' };
+  const colorMap = { green:'#15803D', amber:'#B45309', red:'#B91C1C', blue:'#1D4ED8' };
 
   ['demand','supply'].forEach(side => {
     const grid = document.getElementById(`ds-${side}-grid`);
