@@ -715,7 +715,29 @@ def api_indicators():
 
 
 def load_model_metadata():
-    """Load model training run stats from JSON or fallback to defaults."""
+    """Load model training run stats from Redis, JSON, or fallback to defaults."""
+    redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
+    redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
+    if redis_url and redis_token:
+        try:
+            import urllib.request
+            body = json.dumps(["GET", "trained_model_metadata_v1"]).encode()
+            req = urllib.request.Request(
+                redis_url,
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {redis_token}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=1.5) as r:
+                res = json.loads(r.read())
+            if res.get("result"):
+                return json.loads(res["result"])
+        except Exception:
+            pass
+
     import tempfile
     temp_path = os.path.join(tempfile.gettempdir(), 'model_metadata_temp.json')
     local_path = os.path.join(os.path.dirname(__file__), "model", "model_metadata.json")
@@ -1066,8 +1088,28 @@ def api_admin_retrain():
                         res_body = json.loads(r.read())
                     if not res_body.get("error"):
                         print("[OK] Retrained model uploaded to Upstash Redis successfully!")
+                    
+                    # Upload metadata to Redis as well
+                    temp_meta_path = os.path.join(tempfile.gettempdir(), 'model_metadata_temp.json')
+                    if os.path.exists(temp_meta_path):
+                        with open(temp_meta_path, 'r') as f_meta:
+                            meta_data = json.load(f_meta)
+                        meta_body = json.dumps(["SET", "trained_model_metadata_v1", json.dumps(meta_data)]).encode()
+                        req_meta = urllib.request.Request(
+                            redis_url,
+                            data=meta_body,
+                            headers={
+                                "Authorization": f"Bearer {redis_token}",
+                                "Content-Type": "application/json",
+                            },
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req_meta, timeout=5) as r_meta:
+                            res_meta = json.loads(r_meta.read())
+                        if not res_meta.get("error"):
+                            print("[OK] Retrained model metadata uploaded to Upstash Redis successfully!")
                 except Exception as e:
-                    print(f"[WARN] Failed to upload retrained model to Redis: {e}")
+                    print(f"[WARN] Failed to upload retrained model/metadata to Redis: {e}")
             
             # Reload global model in memory
             global model
