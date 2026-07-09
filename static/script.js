@@ -537,13 +537,13 @@ const DEFINITIONS = [
     id: 'gdp', name: 'GDP Growth', cat: 'macro',
     simple: 'GDP stands for Gross Domestic Product — the total value of everything a country produces in a year. GDP growth tells you how fast the economy is expanding.',
     example: 'If India\'s GDP growth is 6%, it means the country produced 6% more goods and services this year than last year. If growth drops to 4%, that\'s a sign of a slowdown.',
-    current: null, source: 'MOSPI', source_url: 'https://mospi.gov.in', indicator_key: 'gdp_growth', unit: '%'
+    current: null, source: 'MOSPI', source_url: 'https://www.mospi.gov.in/themes/product/6-gross-domestic-product', indicator_key: 'gdp_growth', unit: '%'
   },
   {
     id: 'cpi', name: 'CPI Inflation', cat: 'macro',
     simple: 'CPI (Consumer Price Index) tracks how much everyday items — milk, pulses, petrol — have become more expensive. Higher inflation means higher prices for the same things.',
     example: 'If CPI inflation is 6%, something that cost ₹100 last year now costs ₹106. The RBI aims to keep inflation close to 4%.',
-    current: null, source: 'MOSPI', source_url: 'https://mospi.gov.in/consumer-price-index', indicator_key: 'cpi', unit: '%'
+    current: null, source: 'MOSPI', source_url: 'https://www.mospi.gov.in/themes/product/9-consumer-price-index-cpi', indicator_key: 'cpi', unit: '%'
   },
   {
     id: 'repo', name: 'Repo Rate', cat: 'banking',
@@ -597,7 +597,7 @@ const DEFINITIONS = [
     id: 'agri', name: 'Agriculture GVA Growth', cat: 'macro',
     simple: 'The growth in value created by farming. Over 40% of India\'s population depends on agriculture.',
     example: 'Agri GVA at 4% -> good monsoon, healthy harvest, strong rural demand. At 1% -> drought or flood, poor harvest, lower rural spending.',
-    current: null, source: 'MOSPI', source_url: 'https://mospi.gov.in/national-account-statistics', indicator_key: 'agri_gva', unit: '%'
+    current: null, source: 'MOSPI', source_url: 'https://www.mospi.gov.in/', indicator_key: 'agri_gva', unit: '%'
   },
   {
     id: 'gst', name: 'GST Collections', cat: 'macro',
@@ -615,37 +615,37 @@ const DEFINITIONS = [
     id: 'vix', name: 'India VIX', cat: 'market',
     simple: 'The "Fear Index" — measures how much fear or uncertainty investors expect in the stock market. High VIX = nervous investors.',
     example: 'VIX at 12 -> markets are calm. VIX above 30 -> major fear — election results, global crisis. VIX touched 80+ in 2020.',
-    current: null, source: 'NSE India', source_url: 'https://nseindia.com/market-data/india-vix', indicator_key: 'india_vix', indicator_source: 'extended', unit: ''
+    current: null, source: 'NSE India', source_url: 'https://www.nseindia.com/static/products-services/indices-indiavix-index', indicator_key: 'india_vix', indicator_source: 'extended', unit: ''
   },
   {
     id: 'fii', name: 'FII Net Flow', cat: 'market',
     simple: 'Money flowing into (or out of) Indian markets from foreign investors. A strong signal of global confidence in India\'s economy.',
     example: 'FII pulls out ₹10,000 Cr -> market falls, rupee weakens. FII puts in ₹8,000 Cr -> global investors buying, market supported.',
-    current: null, source: 'NSDL / NSE', source_url: 'https://nsdl.co.in/publications/fii.php', indicator_key: 'fii_net_flow', indicator_source: 'extended', unit: '₹ Cr'
+    current: null, source: 'NSDL / NSE', source_url: 'https://www.nseindia.com/reports/fii-dii', indicator_key: 'fii_net_flow', indicator_source: 'extended', unit: '₹ Cr'
   },
   {
     id: 'iip', name: 'IIP / Core Sector Index', cat: 'macro',
     simple: 'Shows how much factory production rose or fell. Eight core sectors — steel, cement, electricity, oil — make up 40% of IIP.',
     example: 'IIP at +6% -> factories running full speed. IIP at -2% -> manufacturing slowing. Fell -57% during COVID lockdown.',
-    current: null, source: 'MOSPI', source_url: 'https://mospi.gov.in/iip', indicator_key: 'iip_growth', unit: '%'
+    current: null, source: 'MOSPI', source_url: 'https://www.mospi.gov.in/themes/product/54-index-of-industrial-production', indicator_key: 'iip_growth', unit: '%'
   },
   {
     id: 'railway', name: 'Railway Freight Traffic', cat: 'trade',
     simple: 'How much cargo Indian Railways moved — measured in million tonnes. One of the most direct physical proofs of real economic activity.',
     example: 'Freight at 140 MT -> industries running at full production. At 110 MT -> industrial slowdown, fewer orders.',
-    current: null, source: 'Indian Railways', source_url: 'https://indianrailways.gov.in/railwayboard/stat', indicator_key: 'railway_freight', indicator_source: 'extended', unit: 'MT'
+    current: null, source: 'Indian Railways', source_url: 'https://www.fois.indianrail.gov.in/RailSAHAY/index.jsp', indicator_key: 'railway_freight', indicator_source: 'extended', unit: 'MT'
   },
   {
     id: 'upi', name: 'UPI Transaction Volume', cat: 'market',
     simple: 'Payments made through PhonePe, GPay, Paytm — the most real-time indicator of retail consumer spending.',
     example: 'UPI at 14 billion/month -> people spending freely. Drops to 8 billion -> people cutting back, weaker consumer sentiment.',
-    current: null, source: 'NPCI', source_url: 'https://npci.org.in/what-we-do/upi/upi-ecosystem-statistics', indicator_key: 'upi_volume', indicator_source: 'extended', unit: 'B txns'
+    current: null, source: 'NPCI', source_url: 'https://www.npci.org.in/product/upi/product-statistics', indicator_key: 'upi_volume', indicator_source: 'extended', unit: 'B txns'
   },
   {
     id: 'electricity', name: 'Electricity Demand', cat: 'macro',
     simple: 'How much power the country consumed in a month (Billion Units). Tracks factory output and commercial activity closely.',
     example: 'Electricity at 165 BU -> industrial activity and AC load are high. A sharp YoY drop points to factories cutting production.',
-    current: null, source: 'POSOCO / Grid-India', source_url: 'https://posoco.in', indicator_key: 'electricity_demand', indicator_source: 'extended', unit: 'BU'
+    current: null, source: 'POSOCO / Grid-India', source_url: 'https://grid-india.in/en/', indicator_key: 'electricity_demand', indicator_source: 'extended', unit: 'BU'
   },
   {
     id: 'eway', name: 'E-Way Bills', cat: 'trade',
