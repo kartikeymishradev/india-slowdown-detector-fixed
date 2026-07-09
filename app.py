@@ -600,11 +600,11 @@ def validate_config_payload(payload):
                 for indicator in payload["demand_supply"][group]:
                     item = payload["demand_supply"][group][indicator]
                     validate_type(item, dict, f"demand_supply.{group}.{indicator}")
-                    if "value" not in item or "source" not in item:
-                        raise ValueError(f"Indicator '{indicator}' must contain 'value' and 'source'")
+                    if "value" not in item or "sub" not in item:
+                        raise ValueError(f"Indicator '{indicator}' must contain 'value' and 'sub'")
                     validate_type(item["value"], float, f"demand_supply.{group}.{indicator}.value")
-                    validate_type(item["source"], str, f"demand_supply.{group}.{indicator}.source")
-                    validate_length(item["source"], 150, f"demand_supply.{group}.{indicator}.source")
+                    validate_type(item["sub"], str, f"demand_supply.{group}.{indicator}.sub")
+                    validate_length(item["sub"], 150, f"demand_supply.{group}.{indicator}.sub")
     if "fallback_defaults" in payload:
         validate_type(payload["fallback_defaults"], dict, "fallback_defaults")
         for key in ["cpi_inflation_pct", "export_growth_pct", "gdp_growth_pct", "inr_usd"]:
