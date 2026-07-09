@@ -555,8 +555,8 @@
             <div class="about-section">
               <div class="about-head">ML Model</div>
               <div class="about-text">
-                Ensemble of Random Forest + Gradient Boosting trained on <b>52 quarterly observations</b> (FY2013–FY2025).<br>
-                5-fold CV accuracy: <b>78.6%</b> &nbsp;|&nbsp; LOO accuracy: <b>68.8%</b>
+                Ensemble of Random Forest + Gradient Boosting trained on <b><span id="model-desc-quarters">52</span> quarterly observations</b> (<span id="model-desc-range">FY2013–FY2025</span>).<br>
+                5-fold CV accuracy: <b id="model-desc-cv">78.6%</b> &nbsp;|&nbsp; LOO accuracy: <b id="model-desc-loo">68.8%</b>
               </div>
             </div>
             <div class="about-section">
@@ -624,6 +624,33 @@
           <p class="modal-text" style="font-size:11.5px;color:var(--muted);margin-bottom:8px">Modify high-frequency and supply/demand indicators. Saved values will overwrite local config and re-trigger predictions.</p>
           
           <div class="config-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <!-- Macro Fallbacks & Policy -->
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Repo Rate (%)</label>
+              <input type="number" step="0.01" id="cfg-repo" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Next MPC Meeting Date</label>
+              <input type="text" id="cfg-mpc" class="chat-input" style="width:100%" placeholder="e.g. 3–5 Aug 2026">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Fallback GDP Growth (%)</label>
+              <input type="number" step="0.01" id="cfg-fallback-gdp" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Fallback CPI Inflation (%)</label>
+              <input type="number" step="0.01" id="cfg-fallback-cpi" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Fallback INR/USD Rate</label>
+              <input type="number" step="0.01" id="cfg-fallback-inr" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <!-- empty spacer to keep grid alignment -->
+            </div>
+
+            <!-- Supply & Demand (ML Features) -->
+            <div style="grid-column: span 2; border-top: 1px solid var(--border); padding-top: 10px; margin-top: 5px; font-weight: 700; font-size: 11.5px; color: var(--text)">Supply &amp; Demand Drivers (ML Model Features)</div>
             <div>
               <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">WPI Inflation (%)</label>
               <input type="number" step="0.01" id="cfg-wpi" class="chat-input" style="width:100%">
@@ -645,24 +672,106 @@
               <input type="number" step="0.01" id="cfg-pfce" class="chat-input" style="width:100%">
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Repo Rate (%)</label>
-              <input type="number" step="0.01" id="cfg-repo" class="chat-input" style="width:100%">
+              <!-- empty spacer -->
+            </div>
+
+            <!-- PMI & Manufacturing -->
+            <div style="grid-column: span 2; border-top: 1px solid var(--border); padding-top: 10px; margin-top: 5px; font-weight: 700; font-size: 11.5px; color: var(--text)">Manufacturing &amp; PMI Indices</div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">PMI Manufacturing (Main Value)</label>
+              <input type="number" step="0.01" id="cfg-pmi-value" class="chat-input" style="width:100%">
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Next MPC Meeting Date</label>
-              <input type="text" id="cfg-mpc" class="chat-input" style="width:100%" placeholder="e.g. 3–5 Aug 2026">
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">New Orders Index</label>
+              <input type="number" step="0.01" id="cfg-pmi-new-orders" class="chat-input" style="width:100%">
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Fallback GDP Growth (%)</label>
-              <input type="number" step="0.01" id="cfg-fallback-gdp" class="chat-input" style="width:100%">
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Output Index</label>
+              <input type="number" step="0.01" id="cfg-pmi-output" class="chat-input" style="width:100%">
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Fallback CPI Inflation (%)</label>
-              <input type="number" step="0.01" id="cfg-fallback-cpi" class="chat-input" style="width:100%">
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Employment Sub-Index</label>
+              <input type="number" step="0.01" id="cfg-pmi-employment" class="chat-input" style="width:100%">
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Fallback INR/USD Rate</label>
-              <input type="number" step="0.01" id="cfg-fallback-inr" class="chat-input" style="width:100%">
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Input Price Index</label>
+              <input type="number" step="0.01" id="cfg-pmi-input-price" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <!-- empty spacer -->
+            </div>
+
+            <!-- Banking & Agriculture -->
+            <div style="grid-column: span 2; border-top: 1px solid var(--border); padding-top: 10px; margin-top: 5px; font-weight: 700; font-size: 11.5px; color: var(--text)">Banking &amp; Agriculture Indicators</div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Credit Growth YoY (%)</label>
+              <input type="number" step="0.01" id="cfg-credit-growth" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Deposit Growth YoY (%)</label>
+              <input type="text" id="cfg-deposit-growth" class="chat-input" style="width:100%" placeholder="e.g. 10.2%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">GNPA Ratio (%)</label>
+              <input type="number" step="0.01" id="cfg-npa-ratio" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Agri GVA Growth (%)</label>
+              <input type="number" step="0.01" id="cfg-agri-gva" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Rabi Sowing (Mha)</label>
+              <input type="text" id="cfg-rabi-sowing" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Reservoir Levels</label>
+              <input type="text" id="cfg-reservoir-levels" class="chat-input" style="width:100%" placeholder="e.g. 68%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">MSP Wheat (₹/qtl)</label>
+              <input type="text" id="cfg-msp-wheat" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Food Inflation CPI (%)</label>
+              <input type="text" id="cfg-food-inflation" class="chat-input" style="width:100%" placeholder="e.g. 4.78%">
+            </div>
+
+            <!-- Trade & Trade Balances -->
+            <div style="grid-column: span 2; border-top: 1px solid var(--border); padding-top: 10px; margin-top: 5px; font-weight: 700; font-size: 11.5px; color: var(--text)">Trade &amp; Balance of Payments</div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Merchandise Exports ($B)</label>
+              <input type="number" step="0.01" id="cfg-merch-exports" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Merchandise Imports ($B)</label>
+              <input type="number" step="0.01" id="cfg-merch-imports" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Services Exports Growth YoY (%)</label>
+              <input type="text" id="cfg-services-exports" class="chat-input" style="width:100%" placeholder="e.g. +13.0%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Merchandise Export Growth YoY (%)</label>
+              <input type="number" step="0.01" id="cfg-export-growth" class="chat-input" style="width:100%">
+            </div>
+
+            <!-- Labor & Employment -->
+            <div style="grid-column: span 2; border-top: 1px solid var(--border); padding-top: 10px; margin-top: 5px; font-weight: 700; font-size: 11.5px; color: var(--text)">Labor &amp; Employment</div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Urban Unemployment (%)</label>
+              <input type="number" step="0.01" id="cfg-unemployment-urban" class="chat-input" style="width:100%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Rural Unemployment (%)</label>
+              <input type="text" id="cfg-unemployment-rural" class="chat-input" style="width:100%" placeholder="e.g. 5.1%">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">EPFO Net Additions</label>
+              <input type="text" id="cfg-epfo-additions" class="chat-input" style="width:100%" placeholder="e.g. 1.58M">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;display:block;margin-bottom:4px">Labour Force Participation Rate (%)</label>
+              <input type="text" id="cfg-lfpr" class="chat-input" style="width:100%" placeholder="e.g. 54.4%">
             </div>
           </div>
 
@@ -813,15 +922,15 @@
         <div class="modal-section-title">Why CV accuracy and LOO accuracy differ</div>
         <div class="modal-accuracy-row">
           <div class="modal-accuracy-card">
-            <div class="modal-accuracy-num">~80%</div>
+            <div class="modal-accuracy-num" id="model-card-cv">78.6%</div>
             <div class="modal-accuracy-label">5-fold CV Accuracy</div>
           </div>
           <div class="modal-accuracy-card">
-            <div class="modal-accuracy-num">68.8%</div>
+            <div class="modal-accuracy-num" id="model-card-loo">68.8%</div>
             <div class="modal-accuracy-label">Leave-One-Out Accuracy</div>
           </div>
         </div>
-        <p class="modal-text">Both numbers come from the same 52 quarterly observations (FY2013–FY2025) and the same ensemble — the gap is what you'd expect from a small, highly time-correlated dataset, not a bug. 5-fold CV holds out roughly 10 quarters at a time, so each fold still has a broad mix of Stable/Warning/Slowdown periods to learn from. Leave-One-Out holds out a single quarter, so the model sometimes has to classify a quarter without ever having seen a neighboring quarter from the same episode — a harder, more conservative test. Reporting both, rather than just the flattering one, is deliberate: it's an honest signal of how much this model's accuracy should be trusted on a genuinely new, unprecedented quarter.</p>
+        <p class="modal-text" id="model-text-desc-both">Both numbers come from the same <span id="model-text-quarters-both">52</span> quarterly observations (<span id="model-text-range-both">FY2013–FY2025</span>) and the same ensemble — the gap is what you'd expect from a small, highly time-correlated dataset, not a bug. 5-fold CV holds out roughly 10 quarters at a time, so each fold still has a broad mix of Stable/Warning/Slowdown periods to learn from. Leave-One-Out holds out a single quarter, so the model sometimes has to classify a quarter without ever having seen a neighboring quarter from the same episode — a harder, more conservative test. Reporting both, rather than just the flattering one, is deliberate: it's an honest signal of how much this model's accuracy should be trusted on a genuinely new, unprecedented quarter.</p>
       </div>
 
       <div class="modal-section">
@@ -834,7 +943,7 @@
         <div class="modal-section-title">Training setup</div>
         <div class="model-stats">
           <div class="stat-row"><span>Algorithm</span><b>Random Forest + Gradient Boosting (ensemble)</b></div>
-          <div class="stat-row"><span>Training data</span><b>52 quarters, FY2013–FY2025</b></div>
+          <div class="stat-row"><span>Training data</span><b id="model-stat-row-data">52 quarters, FY2013–FY2025</b></div>
           <div class="stat-row"><span>Features</span><b>18 (12 raw indicators + 6 derived)</b></div>
           <div class="stat-row"><span>Classes</span><b>Stable / Warning / Slowdown</b></div>
         </div>

@@ -49,10 +49,10 @@ if redis_url and redis_token:
                 df = pd.concat([df, added_df], ignore_index=True)
                 print(f"Loaded {len(added_list)} additional quarters from Upstash Redis.")
     except Exception as e:
-        print(f"⚠️ Failed to load added quarters from Redis: {e}")
+        print(f"[WARN] Failed to load added quarters from Redis: {e}")
 
 print("=" * 58)
-print("INDIA ECONOMIC SLOWDOWN DETECTOR — MODEL TRAINING v2")
+print("INDIA ECONOMIC SLOWDOWN DETECTOR - MODEL TRAINING v2")
 print("=" * 58)
 print(f"\nLoaded: {csv_path}")
 print(f"Dataset: {len(df)} quarters ({df['quarter'].iloc[0]} to {df['quarter'].iloc[-1]})")
@@ -110,11 +110,11 @@ pipeline = Pipeline([
 print("\n--- Cross Validation ---")
 loo = LeaveOneOut()
 loo_scores = cross_val_score(pipeline, X, y, cv=loo, scoring='accuracy')
-print(f"LOO Accuracy  : {loo_scores.mean():.3f} ± {loo_scores.std():.3f}")
+print(f"LOO Accuracy  : {loo_scores.mean():.3f} +/- {loo_scores.std():.3f}")
 
 skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 cv5 = cross_val_score(pipeline, X, y, cv=skf, scoring='accuracy')
-print(f"5-Fold CV Acc : {cv5.mean():.3f} ± {cv5.std():.3f}")
+print(f"5-Fold CV Acc : {cv5.mean():.3f} +/- {cv5.std():.3f}")
 print(f"Individual    : {[round(s,2) for s in cv5]}")
 
 # ── Train on full data ────────────────────────────────────────────────────────
@@ -138,7 +138,7 @@ try:
     joblib.dump(pipeline, local_save_path)
     print(f"\n Model saved locally -> {local_save_path}")
 except Exception as e:
-    print(f"\n⚠️ Failed to save model locally: {e}")
+    print(f"\n[WARN] Failed to save model locally: {e}")
 
 # Save to system temp directory so the parent Flask process can upload it to Redis
 import tempfile
@@ -147,7 +147,7 @@ try:
     joblib.dump(pipeline, temp_save_path)
     print(f" Model saved to temporary directory -> {temp_save_path}")
 except Exception as e:
-    print(f"⚠️ Failed to save model to temporary directory: {e}")
+    print(f"[WARN] Failed to save model to temporary directory: {e}")
 
 print(f" Trained on {len(df)} quarters with {len(FEATURES)} features")
 print("\nNew features vs v1:")
@@ -157,3 +157,29 @@ print("  + corporate_earnings    (Nifty 50 PAT YoY)")
 print("  + pfce_growth           (Private consumption)")
 print("  + wpi_inflation         (Wholesale prices)")
 print("  + inr_usd               (Exchange rate)")
+
+# ── Save model training metadata ──────────────────────────────────────────────
+import json
+metadata = {
+    "num_quarters": len(df),
+    "first_quarter": str(df['quarter'].iloc[0]),
+    "last_quarter": str(df['quarter'].iloc[-1]),
+    "cv5_accuracy": round(float(cv5.mean()) * 100, 1),
+    "loo_accuracy": round(float(loo_scores.mean()) * 100, 1)
+}
+
+metadata_path = os.path.join(out_dir, 'model_metadata.json')
+try:
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    print(f"Model metadata saved locally -> {metadata_path}")
+except Exception as e:
+    print(f"[WARN] Failed to save metadata locally: {e}")
+
+temp_metadata_path = os.path.join(tempfile.gettempdir(), 'model_metadata_temp.json')
+try:
+    with open(temp_metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    print(f"Model metadata saved to temp -> {temp_metadata_path}")
+except Exception as e:
+    print(f"[WARN] Failed to save metadata to temp: {e}")

@@ -318,6 +318,27 @@ def api_indicators():
     return jsonify(data)
 
 
+def load_model_metadata():
+    """Load model training run stats from JSON or fallback to defaults."""
+    import tempfile
+    temp_path = os.path.join(tempfile.gettempdir(), 'model_metadata_temp.json')
+    local_path = os.path.join(os.path.dirname(__file__), "model", "model_metadata.json")
+    for p in [temp_path, local_path]:
+        if os.path.exists(p):
+            try:
+                with open(p, 'r') as f:
+                    return json.load(f)
+            except Exception:
+                pass
+    return {
+        "num_quarters": 52,
+        "first_quarter": "Q1_FY2013",
+        "last_quarter": "Q4_FY2025",
+        "cv5_accuracy": 78.6,
+        "loo_accuracy": 68.8
+    }
+
+
 @app.route("/api/predict")
 def api_predict():
     """Run ML model on current indicators."""
@@ -366,6 +387,7 @@ def api_predict():
         "indicators": data,
         "model_loaded": model is not None,
         "grounding_status": get_grounding_status(),
+        "model_metadata": load_model_metadata()
     })
 
 
@@ -548,9 +570,13 @@ def api_config():
         if not verify_admin_credentials():
             return jsonify({"error": "Unauthorized: Invalid admin username or password"}), 401
     else:
-        # If no ADMIN_TOKEN, only allow POST from localhost
+        # If no ADMIN_TOKEN, only allow POST from localhost/LAN private networks
         if request.method == "POST":
-            is_local = request.remote_addr in ["127.0.0.1", "localhost", "::1"]
+            import ipaddress
+            try:
+                is_local = ipaddress.ip_address(request.remote_addr).is_private or request.remote_addr in ["localhost"]
+            except Exception:
+                is_local = request.remote_addr in ["127.0.0.1", "localhost", "::1"]
             if not is_local:
                 return jsonify({"error": "Unauthorized: Admin token not configured on server"}), 403
                 
@@ -625,7 +651,16 @@ def api_admin_retrain():
     
     try:
         script_path = os.path.join(os.path.dirname(__file__), "model", "train_model.py")
-        result = subprocess.run([sys.executable, script_path], capture_output=True, text=True, cwd=os.path.dirname(__file__))
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
+        result = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=env,
+            cwd=os.path.dirname(__file__)
+        )
         
         # After running train_model.py successfully:
         temp_model_path = os.path.join(tempfile.gettempdir(), 'model_temp.pkl')
@@ -655,14 +690,14 @@ def api_admin_retrain():
                     with urllib.request.urlopen(req, timeout=10) as r:
                         res_body = json.loads(r.read())
                     if not res_body.get("error"):
-                        print("🟢 Retrained model uploaded to Upstash Redis successfully!")
+                        print("[OK] Retrained model uploaded to Upstash Redis successfully!")
                 except Exception as e:
-                    print(f"⚠️ Failed to upload retrained model to Redis: {e}")
+                    print(f"[WARN] Failed to upload retrained model to Redis: {e}")
             
             # Reload global model in memory
             global model
             model = joblib.load(io.BytesIO(model_bytes))
-            print("🟢 In-memory model reloaded from temp model bytes")
+            print("[OK] In-memory model reloaded from temp model bytes")
             
         return jsonify({
             "status": "success",
@@ -774,9 +809,9 @@ def api_admin_add_quarter():
                 res_body = json.loads(r.read())
             if not res_body.get("error"):
                 redis_saved = True
-                print("🟢 New quarter saved to Upstash Redis")
+                print("[OK] New quarter saved to Upstash Redis")
         except Exception as e:
-            print(f"⚠️ Failed to save added quarter to Redis: {e}")
+            print(f"[WARN] Failed to save added quarter to Redis: {e}")
 
     # Try saving to local CSV as fallback (local dev)
     local_saved = False
@@ -786,7 +821,7 @@ def api_admin_add_quarter():
             df_updated.to_csv(csv_path, index=False)
             local_saved = True
         except Exception as e:
-            print(f"⚠️ Failed to write to local CSV: {e}")
+            print(f"[WARN] Failed to write to local CSV: {e}")
 
     if redis_saved or local_saved:
         return jsonify({"status": "success", "message": f"Successfully added quarter {q_name} to training dataset."})
@@ -955,7 +990,7 @@ Your answer:"""
 
     except Exception as e:
         import traceback
-        print(f"⚠️  Learn API error: {type(e).__name__}: {e}")
+        print(f"[WARN] Learn API error: {type(e).__name__}: {e}")
         traceback.print_exc()
         return jsonify({
             "answer": "There's a small technical issue right now. Please try again shortly!"
@@ -1000,7 +1035,7 @@ def _startup_refresh():
             else:
                 print(" Startup: cache already populated, skipping refresh.")
         except Exception as e:
-            print(f"⚠️  Startup refresh failed (non-fatal): {e}")
+            print(f"[WARN] Startup refresh failed (non-fatal): {e}")
     threading.Thread(target=_run, daemon=True).start()
 
 
