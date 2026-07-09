@@ -311,7 +311,401 @@ def sitemap():
     return Response(content, mimetype="application/xml")
 
 
+import re
+import time
+import threading
+import urllib.request
+from functools import wraps
+
+class RateLimitException(Exception):
+    pass
+
+# Thread-safe structures for rate limiting
+_rate_limit_lock = threading.Lock()
+_ip_request_history = {}  # (ip, endpoint_type) -> list of timestamps
+_failed_auth_local = {}    # (ip, username) -> (attempts_count, last_failed_time)
+
+def get_security_config():
+    try:
+        cfg = load_config()
+        return cfg.get("security", {
+            "auth_max_failed_attempts": 5,
+            "auth_backoff_base_seconds": 2.0,
+            "public_limit_per_minute": 60,
+            "auth_limit_per_minute": 10,
+            "user_action_limit_per_minute": 120
+        })
+    except Exception:
+        return {
+            "auth_max_failed_attempts": 5,
+            "auth_backoff_base_seconds": 2.0,
+            "public_limit_per_minute": 60,
+            "auth_limit_per_minute": 10,
+            "user_action_limit_per_minute": 120
+        }
+
+def get_ip():
+    headers_list = ["X-Forwarded-For", "X-Real-IP"]
+    for h in headers_list:
+        val = request.headers.get(h)
+        if val:
+            return val.split(",")[0].strip()
+    return request.remote_addr or "127.0.0.1"
+
+def check_redis_attempts(ip, username):
+    redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
+    redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
+    if not (redis_url and redis_token):
+        return None
+    key_count = f"failed_attempts:{ip}:{username}"
+    key_time = f"failed_time:{ip}:{username}"
+    try:
+        body = json.dumps(["MGET", key_count, key_time]).encode()
+        req = urllib.request.Request(
+            redis_url,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {redis_token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=1.5) as r:
+            res = json.loads(r.read())
+        if "result" in res and isinstance(res["result"], list) and len(res["result"]) == 2:
+            c_val = res["result"][0]
+            t_val = res["result"][1]
+            attempts = int(c_val) if c_val else 0
+            last_time = float(t_val) if t_val else 0.0
+            return attempts, last_time
+    except Exception:
+        pass
+    return None
+
+def set_redis_attempts(ip, username, attempts, last_time):
+    redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
+    redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
+    if not (redis_url and redis_token):
+        return
+    key_count = f"failed_attempts:{ip}:{username}"
+    key_time = f"failed_time:{ip}:{username}"
+    try:
+        body = json.dumps(["MSET", key_count, str(attempts), key_time, str(last_time)]).encode()
+        req = urllib.request.Request(
+            redis_url,
+            data=body,
+            headers={
+                "Authorization": f"Bearer {redis_token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=1.5) as r:
+            pass
+        expire_body = json.dumps(["EXPIRE", key_count, "7200"]).encode()
+        req_exp = urllib.request.Request(
+            redis_url,
+            data=expire_body,
+            headers={
+                "Authorization": f"Bearer {redis_token}",
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req_exp, timeout=1.0) as r:
+            pass
+    except Exception:
+        pass
+
+def check_auth_backoff(username):
+    ip = get_ip()
+    sec_cfg = get_security_config()
+    max_failed = int(sec_cfg.get("auth_max_failed_attempts", 5))
+    backoff_base = float(sec_cfg.get("auth_backoff_base_seconds", 2.0))
+    
+    attempts, last_time = 0, 0.0
+    redis_data = check_redis_attempts(ip, username)
+    if redis_data is not None:
+        attempts, last_time = redis_data
+    else:
+        with _rate_limit_lock:
+            attempts, last_time = _failed_auth_local.get((ip, username), (0, 0.0))
+            
+    if attempts > 0:
+        backoff_duration = backoff_base ** attempts
+        now = time.time()
+        elapsed = now - last_time
+        if elapsed < backoff_duration:
+            retry_after = round(backoff_duration - elapsed, 1)
+            return False, retry_after
+    return True, 0.0
+
+def record_failed_auth(username):
+    ip = get_ip()
+    attempts, last_time = 0, 0.0
+    redis_data = check_redis_attempts(ip, username)
+    if redis_data is not None:
+        attempts, last_time = redis_data
+    else:
+        with _rate_limit_lock:
+            attempts, last_time = _failed_auth_local.get((ip, username), (0, 0.0))
+            
+    attempts += 1
+    last_time = time.time()
+    set_redis_attempts(ip, username, attempts, last_time)
+    with _rate_limit_lock:
+        _failed_auth_local[(ip, username)] = (attempts, last_time)
+
+def reset_failed_auth(username):
+    ip = get_ip()
+    set_redis_attempts(ip, username, 0, 0.0)
+    with _rate_limit_lock:
+        if (ip, username) in _failed_auth_local:
+            del _failed_auth_local[(ip, username)]
+
+def limit_rate(endpoint_type):
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            sec_cfg = get_security_config()
+            if endpoint_type == "auth":
+                limit = int(sec_cfg.get("auth_limit_per_minute", 10))
+            elif endpoint_type == "public":
+                limit = int(sec_cfg.get("public_limit_per_minute", 60))
+            elif endpoint_type == "user_action":
+                limit = int(sec_cfg.get("user_action_limit_per_minute", 120))
+            else:
+                limit = 60
+                
+            ip = get_ip()
+            now = time.time()
+            with _rate_limit_lock:
+                history = _ip_request_history.get((ip, endpoint_type), [])
+                history = [t for t in history if now - t < 60]
+                if len(history) >= limit:
+                    raise RateLimitException(f"Rate limit exceeded. Limit is {limit} requests per minute.")
+                history.append(now)
+                _ip_request_history[(ip, endpoint_type)] = history
+            return f(*args, **kwargs)
+        return wrapped
+    return decorator
+
+# ── Validation Utilities ──
+def validate_type(val, expected_type, field_name):
+    if expected_type == float:
+        if not isinstance(val, (int, float)):
+            raise ValueError(f"Field '{field_name}' must be a numeric float/int, got {type(val).__name__}")
+    elif expected_type == int:
+        if not isinstance(val, int) or isinstance(val, bool):
+            raise ValueError(f"Field '{field_name}' must be an integer, got {type(val).__name__}")
+    elif not isinstance(val, expected_type):
+        raise ValueError(f"Field '{field_name}' must be of type {expected_type.__name__}, got {type(val).__name__}")
+
+def validate_regex(val, pattern, field_name):
+    if not re.match(pattern, val):
+        raise ValueError(f"Field '{field_name}' value '{val}' does not match expected format pattern '{pattern}'")
+
+def validate_length(val, max_len, field_name):
+    if len(val) > max_len:
+        raise ValueError(f"Field '{field_name}' exceeds maximum allowed length of {max_len} characters")
+    if len(val) == 0:
+        raise ValueError(f"Field '{field_name}' cannot be empty")
+
+def validate_add_quarter_payload(payload):
+    required = {
+        "quarter": (str, r"^Q[1-4]_FY\d{4}$", 15),
+        "gdp_growth": (float, None, None),
+        "cpi_inflation": (float, None, None),
+        "wpi_inflation": (float, None, None),
+        "pmi_manufacturing": (float, None, None),
+        "repo_rate": (float, None, None),
+        "exports_yoy": (float, None, None),
+        "core_sector_growth": (float, None, None),
+        "capacity_utilization": (float, None, None),
+        "corporate_earnings_growth": (float, None, None),
+        "pfce_growth": (float, None, None),
+        "inr_usd": (float, None, None),
+        "unemployment": (float, None, None),
+        "label": (str, None, 15)
+    }
+    for k in payload:
+        if k not in required:
+            raise ValueError(f"Payload contains unexpected extra key: '{k}'")
+    for k, (expected_type, pattern, max_len) in required.items():
+        if k not in payload:
+            raise ValueError(f"Missing required field: '{k}'")
+        val = payload[k]
+        validate_type(val, expected_type, k)
+        if expected_type == str:
+            validate_length(val, max_len, k)
+            if pattern:
+                validate_regex(val, pattern, k)
+        elif expected_type == float:
+            if val < -100.0 or val > 10000.0:
+                raise ValueError(f"Field '{k}' value {val} is out of safe range bounds [-100, 10000]")
+    if payload["label"] not in ["Stable", "Warning", "Slowdown"]:
+        raise ValueError("Field 'label' must be one of 'Stable', 'Warning', 'Slowdown'")
+
+def validate_analyze_payload(payload):
+    allowed = {"indicators", "prediction", "risk_score"}
+    for k in payload:
+        if k not in allowed:
+            raise ValueError(f"Payload contains unexpected extra key: '{k}'")
+    if "indicators" in payload:
+        validate_type(payload["indicators"], dict, "indicators")
+    if "prediction" in payload:
+        validate_type(payload["prediction"], dict, "prediction")
+    if "risk_score" in payload and payload["risk_score"] is not None:
+        validate_type(payload["risk_score"], float, "risk_score")
+        if payload["risk_score"] < 0 or payload["risk_score"] > 100:
+            raise ValueError("Field 'risk_score' must be between 0 and 100")
+
+def validate_learn_payload(payload):
+    allowed = {"question", "history", "context"}
+    for k in payload:
+        if k not in allowed:
+            raise ValueError(f"Payload contains unexpected extra key: '{k}'")
+    if "question" not in payload:
+        raise ValueError("Missing required field: 'question'")
+    validate_type(payload["question"], str, "question")
+    validate_length(payload["question"].strip(), 500, "question")
+    if "history" in payload:
+        validate_type(payload["history"], list, "history")
+        for idx, item in enumerate(payload["history"]):
+            validate_type(item, dict, f"history[{idx}]")
+            if "role" not in item or "parts" not in item:
+                raise ValueError(f"Item history[{idx}] must contain 'role' and 'parts'")
+            validate_type(item["role"], str, f"history[{idx}].role")
+            if item["role"] not in ["user", "model"]:
+                raise ValueError(f"history[{idx}].role must be 'user' or 'model'")
+            validate_type(item["parts"], list, f"history[{idx}].parts")
+            for p_idx, part in enumerate(item["parts"]):
+                validate_type(part, str, f"history[{idx}].parts[{p_idx}]")
+                validate_length(part, 1000, f"history[{idx}].parts[{p_idx}]")
+    if "context" in payload:
+        validate_type(payload["context"], dict, "context")
+
+def validate_config_payload(payload):
+    allowed_root = {"demand_supply", "fallback_defaults", "hf_indicators", "macro", "pmi", "sector_trends", "security"}
+    for k in payload:
+        if k not in allowed_root:
+            raise ValueError(f"Unexpected configuration key: '{k}'")
+    if "demand_supply" in payload:
+        validate_type(payload["demand_supply"], dict, "demand_supply")
+        for group in ["demand", "supply"]:
+            if group in payload["demand_supply"]:
+                validate_type(payload["demand_supply"][group], dict, f"demand_supply.{group}")
+                for indicator in payload["demand_supply"][group]:
+                    item = payload["demand_supply"][group][indicator]
+                    validate_type(item, dict, f"demand_supply.{group}.{indicator}")
+                    if "value" not in item or "source" not in item:
+                        raise ValueError(f"Indicator '{indicator}' must contain 'value' and 'source'")
+                    validate_type(item["value"], float, f"demand_supply.{group}.{indicator}.value")
+                    validate_type(item["source"], str, f"demand_supply.{group}.{indicator}.source")
+                    validate_length(item["source"], 150, f"demand_supply.{group}.{indicator}.source")
+    if "fallback_defaults" in payload:
+        validate_type(payload["fallback_defaults"], dict, "fallback_defaults")
+        for key in ["cpi_inflation_pct", "export_growth_pct", "gdp_growth_pct", "inr_usd"]:
+            if key in payload["fallback_defaults"]:
+                validate_type(payload["fallback_defaults"][key], float, f"fallback_defaults.{key}")
+    if "hf_indicators" in payload:
+        validate_type(payload["hf_indicators"], dict, "hf_indicators")
+        string_fields = [
+            "deposit_growth_yoy", "food_inflation_cpi", "labour_force_part", 
+            "msp_wheat_per_qtl", "rabi_sowing_mha", "reservoir_levels_pct", 
+            "rural_unemployment", "services_exports_yoy", "epfo_net_additions"
+        ]
+        for field in string_fields:
+            if field in payload["hf_indicators"]:
+                validate_type(payload["hf_indicators"][field], str, f"hf_indicators.{field}")
+                validate_length(payload["hf_indicators"][field], 50, f"hf_indicators.{field}")
+        float_fields = ["merchandise_exports_usd_b", "merchandise_imports_usd_b"]
+        for field in float_fields:
+            if field in payload["hf_indicators"]:
+                validate_type(payload["hf_indicators"][field], float, f"hf_indicators.{field}")
+    if "macro" in payload:
+        validate_type(payload["macro"], dict, "macro")
+        float_fields = [
+            "agri_gva", "credit_growth", "fiscal_deficit", "forex_reserves", 
+            "iip_growth", "npa_ratio", "repo_rate", "unemployment"
+        ]
+        for field in float_fields:
+            if field in payload["macro"]:
+                validate_type(payload["macro"][field], float, f"macro.{field}")
+        if "next_mpc_meeting" in payload["macro"]:
+            validate_type(payload["macro"]["next_mpc_meeting"], str, "macro.next_mpc_meeting")
+            validate_length(payload["macro"]["next_mpc_meeting"], 100, "macro.next_mpc_meeting")
+    if "pmi" in payload:
+        validate_type(payload["pmi"], dict, "pmi")
+        if "value" in payload["pmi"]:
+            validate_type(payload["pmi"]["value"], float, "pmi.value")
+        if "sub_indices" in payload["pmi"]:
+            validate_type(payload["pmi"]["sub_indices"], dict, "pmi.sub_indices")
+            for sub in ["new_orders", "output", "employment", "input_price"]:
+                if sub in payload["pmi"]["sub_indices"]:
+                    val = payload["pmi"]["sub_indices"][sub]
+                    if not isinstance(val, (int, float, str)):
+                        raise ValueError(f"Field 'pmi.sub_indices.{sub}' must be a number or string")
+                    if isinstance(val, str):
+                        validate_length(val, 50, f"pmi.sub_indices.{sub}")
+    if "security" in payload:
+        validate_type(payload["security"], dict, "security")
+        for key in ["auth_max_failed_attempts", "auth_backoff_base_seconds", "public_limit_per_minute", "auth_limit_per_minute", "user_action_limit_per_minute"]:
+            if key in payload["security"]:
+                validate_type(payload["security"][key], float, f"security.{key}")
+
+# ── Error Handlers ──
+@app.errorhandler(RateLimitException)
+def handle_rate_limit(e):
+    return jsonify({"error": str(e)}), 429
+
+@app.errorhandler(ValueError)
+def handle_value_error(e):
+    return jsonify({"error": str(e)}), 400
+
+@app.errorhandler(Exception)
+def handle_general_exception(e):
+    if isinstance(e, RateLimitException):
+        return jsonify({"error": str(e)}), 429
+    if isinstance(e, ValueError):
+        return jsonify({"error": str(e)}), 400
+    import traceback
+    app.logger.error("Unhandled exception occurred in application route: %s", traceback.format_exc())
+    return jsonify({"error": "An internal server error occurred while processing your request."}), 500
+
+
+def verify_admin_credentials():
+    admin_token = os.environ.get("ADMIN_TOKEN")
+    if not admin_token:
+        # Localhost development allows bypass if no token is configured
+        return True
+        
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.replace("Bearer ", "").strip()
+    if not token:
+        token = request.headers.get("X-Admin-Token", "").strip()
+        
+    user = request.headers.get("X-Admin-User", "admin").strip().lower()
+    
+    # ── Check failed auth backoff ──
+    allowed, retry_after = check_auth_backoff(user)
+    if not allowed:
+        raise RateLimitException(f"Too many failed login attempts. Please wait {retry_after} seconds.")
+        
+    clean_admin_token = admin_token.strip().strip("'").strip('"')
+    expected_user = os.environ.get("ADMIN_USER", "admin").strip().strip("'").strip('"').lower()
+    
+    success = (token == clean_admin_token and user == expected_user)
+    if success:
+        reset_failed_auth(user)
+    else:
+        record_failed_auth(user)
+        
+    return success
+
+
 @app.route("/api/indicators")
+@limit_rate("public")
 def api_indicators():
     """Return all live sector indicators."""
     data = get_all_indicators()
@@ -340,6 +734,7 @@ def load_model_metadata():
 
 
 @app.route("/api/predict")
+@limit_rate("public")
 def api_predict():
     """Run ML model on current indicators."""
     global model
@@ -476,6 +871,7 @@ def _feature_vector_from_training_row(row):
 
 
 @app.route("/api/shock-scenario/<key>")
+@limit_rate("public")
 def api_shock_scenario(key):
     """Run the actual trained model against a real historical quarter
     (e.g. the COVID-19 shock quarter) and return what it predicted then,
@@ -535,33 +931,8 @@ def api_shock_scenario(key):
     return jsonify(result)
 
 
-def verify_admin_credentials():
-    admin_token = os.environ.get("ADMIN_TOKEN")
-    if not admin_token:
-        # Localhost development allows bypass if no token is configured
-        return True
-        
-    auth_header = request.headers.get("Authorization", "")
-    token = auth_header.replace("Bearer ", "").strip()
-    if not token:
-        # Fallback to custom header if WSGI gateway stripped Authorization header
-        token = request.headers.get("X-Admin-Token", "").strip()
-        
-    user = request.headers.get("X-Admin-User", "admin").strip().lower()
-    
-    # Strip any potential wrapping quotes added in Vercel env variable panel
-    clean_admin_token = admin_token.strip().strip("'").strip('"')
-    expected_user = os.environ.get("ADMIN_USER", "admin").strip().strip("'").strip('"').lower()
-    
-    import sys
-    print(f"[AUTH_DEBUG] Expected user: '{expected_user}', Provided user: '{user}'", file=sys.stderr)
-    print(f"[AUTH_DEBUG] Expected token length: {len(clean_admin_token)}, Provided token length: {len(token)}", file=sys.stderr)
-    sys.stderr.flush()
-    
-    return token == clean_admin_token and user == expected_user
-
-
 @app.route("/api/config", methods=["GET", "POST"])
+@limit_rate("auth")
 def api_config():
     config_path = os.path.join(os.path.dirname(__file__), "config.json")
     
@@ -583,6 +954,7 @@ def api_config():
     # POST: save config overrides
     if request.method == "POST":
         payload = request.get_json(silent=True) or {}
+        validate_config_payload(payload)
         if not payload:
             return jsonify({"error": "Invalid request payload"}), 400
             
@@ -640,6 +1012,7 @@ def api_config():
 
 
 @app.route("/api/admin/retrain", methods=["POST"])
+@limit_rate("auth")
 def api_admin_retrain():
     if os.environ.get("ADMIN_TOKEN") and not verify_admin_credentials():
         return jsonify({"error": "Unauthorized: Invalid Admin Token"}), 401
@@ -699,36 +1072,34 @@ def api_admin_retrain():
             model = joblib.load(io.BytesIO(model_bytes))
             print("[OK] In-memory model reloaded from temp model bytes")
             
+        # Clean stderr of full paths before returning to user
+        clean_stderr = result.stderr
+        if clean_stderr:
+            clean_stderr = re.sub(r'[A-Za-z]:\\[^ \n]+', '[PATH]', clean_stderr)
+            clean_stderr = re.sub(r'/[a-zA-Z0-9_\.\-]+/[a-zA-Z0-9_\.\-/]+', '[PATH]', clean_stderr)
         return jsonify({
             "status": "success",
             "stdout": result.stdout,
-            "stderr": result.stderr,
+            "stderr": clean_stderr,
             "returncode": result.returncode
         })
     except Exception as e:
-        return jsonify({"error": f"Failed to retrain model: {str(e)}"}), 500
+        import traceback
+        import sys
+        print("[ERROR] Retraining failed:", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
+        return jsonify({"error": "Failed to retrain model due to pipeline execution failure. Please check server logs for details."}), 500
 
 
 @app.route("/api/admin/add-quarter", methods=["POST"])
+@limit_rate("auth")
 def api_admin_add_quarter():
     if os.environ.get("ADMIN_TOKEN") and not verify_admin_credentials():
         return jsonify({"error": "Unauthorized: Invalid Admin Token"}), 401
             
-    payload = request.get_json()
-    if not payload:
-        return jsonify({"error": "Invalid request payload"}), 400
-        
-    required_fields = [
-        "quarter", "gdp_growth", "cpi_inflation", "wpi_inflation",
-        "pmi_manufacturing", "repo_rate", "exports_yoy", "core_sector_growth",
-        "capacity_utilization", "corporate_earnings_growth", "pfce_growth",
-        "inr_usd", "unemployment", "label"
-    ]
-    
-    for f in required_fields:
-        if f not in payload:
-            return jsonify({"error": f"Missing required field: {f}"}), 400
-            
+    payload = request.get_json(silent=True) or {}
+    validate_add_quarter_payload(payload)
     q_name = payload["quarter"].strip()
     
     # Check duplicate in local CSV if readable
@@ -847,8 +1218,11 @@ def api_refresh_grounding():
 
 
 @app.route("/api/sector/<sector_id>")
+@limit_rate("public")
 def api_sector(sector_id):
     """Return detailed data for a specific sector."""
+    if not re.match(r"^[a-zA-Z0-9_\-]+$", sector_id):
+        return jsonify({"error": "Invalid sector identifier format"}), 400
     data = get_all_indicators()
     sectors = data.get("sectors", {})
     if sector_id not in sectors:
@@ -857,6 +1231,7 @@ def api_sector(sector_id):
 
 
 @app.route("/api/analyze", methods=["POST"])
+@limit_rate("user_action")
 def api_analyze():
     """Generate AI narrative analysis using Gemini (no grounding — just commentary
     on numbers we already computed). Uses GEMINI_API_KEY_ANALYZE if set,
@@ -866,6 +1241,7 @@ def api_analyze():
         return jsonify({"error": "GEMINI_API_KEY_ANALYZE (or GEMINI_API_KEY) not configured on server"}), 500
 
     payload = request.get_json(silent=True) or {}
+    validate_analyze_payload(payload)
     indicators = payload.get("indicators")
     prediction = payload.get("prediction")
     risk_score = payload.get("risk_score")
@@ -886,6 +1262,7 @@ def api_analyze():
 
 
 @app.route("/api/learn", methods=["POST"])
+@limit_rate("user_action")
 def api_learn():
     """
     Gemini-powered chatbot for the Learn & Ask section.
@@ -901,6 +1278,7 @@ def api_learn():
         return jsonify({"answer": "The Gemini API key isn't configured on this server. Please contact the admin."}), 200
 
     payload  = request.get_json(silent=True) or {}
+    validate_learn_payload(payload)
     question = (payload.get("question") or "").strip()
     history  = payload.get("history", [])  # last few turns for context
     context  = payload.get("context") or {}  # today's live dashboard snapshot, from the client
