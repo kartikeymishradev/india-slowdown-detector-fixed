@@ -588,6 +588,8 @@ def validate_learn_payload(payload):
 def validate_config_payload(payload):
     allowed_root = {"demand_supply", "fallback_defaults", "hf_indicators", "macro", "pmi", "sector_trends", "security"}
     for k in payload:
+        if k.startswith("_"):
+            continue
         if k not in allowed_root:
             raise ValueError(f"Unexpected configuration key: '{k}'")
     if "demand_supply" in payload:
