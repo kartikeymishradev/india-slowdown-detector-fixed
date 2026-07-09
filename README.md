@@ -2,7 +2,7 @@
 
 # ArthSpandan
 
-**AI-powered macroeconomic intelligence platform for tracking India's economic pulse and detecting early slowdown signals.**
+**AI-powered macroeconomic intelligence platform that monitors India's economic pulse using machine learning, real-time indicators, and explainable AI.**
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue?style=flat-square\&logo=python)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-3.0-black?style=flat-square\&logo=flask)](https://flask.palletsprojects.com)
@@ -39,17 +39,68 @@ Instead of relying solely on lagging indicators like quarterly GDP, the platform
 
 ---
 
+## Key Features
+
+- 📈 AI-powered Economic Slowdown Prediction
+- 🧠 Explainable AI Insights with Grounded Analysis
+- 📊 Foundation Score for macroeconomic health
+- 🌍 Historical Shock Overlay for event comparison
+- 📉 Continuous Weighted Risk Score
+- 🏦 Multi-sector Economic Monitoring
+- 🔄 Live Economic Indicator Dashboard
+- 🤖 One-click ML Model Retraining
+- ⚙️ Admin Configuration Dashboard
+- 📤 Export Reports and Data
+- ⚡ Redis-backed High Performance Caching
+- ☁️ Serverless Deployment on Vercel
+
+---
+
 ## ML Model
 
 * **Algorithm:** Ensemble (Random Forest + Gradient Boosting, Soft Voting)
 * **Training Data:** 52 quarterly observations (FY2013 Q1 – FY2025 Q4)
 * **Features:** 18 macroeconomic and high-frequency indicators (12 raw + 6 derived)
-* **Output:** Stable / Warning / Slowdown + Confidence Score
+* **Output:** Stable / Warning / Slowdown + Continuous Risk Score (0–100) / Foundation Score / Explainable AI Insights
 * **5-Fold Cross Validation Accuracy:** ~80%
 * **Leave-One-Out Accuracy:** ~78%
 * **Data Sources:** MOSPI, RBI, CMIE, Ministry of Commerce, S&P Global, DPIIT, NSE
 
 ---
+
+## Technology Stack
+
+### Backend
+- Python
+- Flask
+
+### Machine Learning
+- scikit-learn
+- Random Forest
+- Gradient Boosting
+
+### Frontend
+- HTML5
+- CSS3
+- JavaScript
+- Chart.js
+
+### AI
+- Google Gemini API
+
+### Infrastructure
+- Vercel
+- Upstash Redis
+
+### Data Sources
+- RBI
+- MOSPI
+- S&P Global
+- Ministry of Commerce
+- NSE
+
+---
+
 
 ## Run Locally
 
@@ -128,32 +179,110 @@ arthspandan/
 └── README.md
 ```
 
+## System Architecture
+
+Data Sources
+↓
+Data Collection
+↓
+Feature Engineering
+↓
+Machine Learning Model
+↓
+Risk Assessment Engine
+↓
+Foundation Score
+↓
+AI Explanation Engine
+↓
+Interactive Dashboard
+
 ---
 
 ## API Endpoints
 
-| Method | Endpoint           | Description                |
-| ------ | ------------------ | -------------------------- |
-| GET    | `/`                | Dashboard UI               |
-| GET    | `/api/predict`     | ML Prediction + Risk Score |
-| GET    | `/api/indicators`  | Indicator Data             |
-| GET    | `/api/sector/<id>` | Sector Details             |
-| GET    | `/api/health`      | Health Check               |
+| Method | Endpoint                           | Description                                   |
+|---------|------------------------------------|-----------------------------------------------|
+| GET     | `/`                                | Dashboard UI                                  |
+| GET     | `/api/predict`                     | ML prediction with risk score                 |
+| GET     | `/api/indicators`                  | Latest macroeconomic indicators               |
+| GET     | `/api/sector/<id>`                 | Sector-specific analysis                      |
+| GET     | `/api/health`                      | Health check endpoint                         |
+| GET     | `/api/config`                      | Retrieve dashboard configuration              |
+| POST    | `/api/config`                      | Update configuration (Admin)                  |
+| POST    | `/api/admin/retrain`               | Retrain and deploy ML model                   |
+| POST    | `/api/admin/add-quarter`           | Add new quarterly training data               |
+| POST    | `/api/foundation-score/recompute`  | Recalculate Foundation Score                  |
+| POST    | `/api/refresh-grounding`           | Refresh AI-grounded macroeconomic analysis    |
+
 
 ---
 
 ## Features
 
+### Economic Intelligence
+
 - AI-powered macroeconomic slowdown prediction
-- Real-time economic indicator dashboard
-- Multi-sector risk analysis
-- Interactive macroeconomic visualizations
-- Explainable AI-generated economic insights
-- RESTful API architecture
-- Responsive cross-device interface
-- One-click deployment with Vercel
+- Continuous weighted risk scoring
+- Foundation Score
+- Historical Shock Overlay
+- Multi-sector macroeconomic monitoring
+- High-frequency indicator tracking
+
+### Artificial Intelligence
+
+- Explainable AI-generated analysis
+- Gemini-powered grounded responses
+- Machine learning ensemble prediction
+- Confidence score estimation
+
+### Dashboard
+
+- Interactive economic charts
+- Sector-wise analysis
+- Historical trend visualization
+- Responsive dashboard
+- Export functionality
+
+### Administration
+
+- Secure Admin Dashboard
+- Live configuration editor
+- One-click ML model retraining
+- Quarterly training data manager
+- Threshold simulation sandbox
+
+### Infrastructure
+
+- Upstash Redis persistence
+- Background synchronization
+- Intelligent caching
+- Serverless deployment
+- Performance optimized
 
 ---
+
+## Performance Optimizations
+
+- Redis-backed caching
+- Lazy-loaded charts
+- Background data synchronization
+- Response compression
+- Optimized Lighthouse performance
+- Serverless cold-start optimization
+
+---
+
+## Search & Analytics
+
+- Google Search Console
+- Google Analytics 4
+- Schema.org Structured Data
+- robots.txt
+- XML Sitemap
+
+---
+
 
 ## Research
 
@@ -168,6 +297,22 @@ Presented at:
 Department of Computer Science & Engineering, FOET
 Dr. Shakuntala Misra National Rehabilitation University, Lucknow
 March 2026
+
+---
+
+## Roadmap
+
+- [x] Economic Slowdown Prediction
+- [x] AI Insights
+- [x] Foundation Score
+- [x] Historical Shock Overlay
+- [x] Admin Dashboard
+- [x] Model Retraining
+- [x] Redis Persistence
+- [ ] Economic Forecasting
+- [ ] Public API
+- [ ] Global Economy Support
+- [ ] Mobile Application
 
 ---
 
