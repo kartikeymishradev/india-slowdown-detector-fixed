@@ -1041,25 +1041,45 @@ def api_admin_retrain():
     if os.environ.get("ADMIN_TOKEN") and not verify_admin_credentials():
         return jsonify({"error": "Unauthorized: Invalid Admin Token"}), 401
             
-    import subprocess
+    import io
     import sys
     import joblib
     import tempfile
     
+    # Save standard output streams
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    
+    sys.stdout = io.StringIO()
+    sys.stderr = io.StringIO()
+    
+    run_err = None
     try:
-        script_path = os.path.join(os.path.dirname(__file__), "model", "train_model.py")
-        env = os.environ.copy()
-        env["PYTHONIOENCODING"] = "utf-8"
-        result = subprocess.run(
-            [sys.executable, script_path],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            env=env,
-            cwd=os.path.dirname(__file__)
-        )
+        from model.train_model import run_training
+        run_training()
+    except Exception as e:
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        run_err = e
+    finally:
+        stdout_val = sys.stdout.getvalue()
+        stderr_val = sys.stderr.getvalue()
         
-        # After running train_model.py successfully:
+        # Restore standard output streams
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+        
+    if run_err is not None:
+        clean_stderr = re.sub(r'[A-Za-z]:\\[^ \n]+', '[PATH]', stderr_val)
+        clean_stderr = re.sub(r'/[a-zA-Z0-9_\.\-]+/[a-zA-Z0-9_\.\-/]+', '[PATH]', clean_stderr)
+        return jsonify({
+            "error": "Failed to retrain model due to pipeline execution failure.",
+            "stdout": stdout_val,
+            "stderr": clean_stderr
+        }), 500
+        
+    try:
+        # After running train_model successfully:
         temp_model_path = os.path.join(tempfile.gettempdir(), 'model_temp.pkl')
         if os.path.exists(temp_model_path):
             with open(temp_model_path, 'rb') as f:
@@ -1116,24 +1136,21 @@ def api_admin_retrain():
             model = joblib.load(io.BytesIO(model_bytes))
             print("[OK] In-memory model reloaded from temp model bytes")
             
-        # Clean stderr of full paths before returning to user
-        clean_stderr = result.stderr
-        if clean_stderr:
-            clean_stderr = re.sub(r'[A-Za-z]:\\[^ \n]+', '[PATH]', clean_stderr)
-            clean_stderr = re.sub(r'/[a-zA-Z0-9_\.\-]+/[a-zA-Z0-9_\.\-/]+', '[PATH]', clean_stderr)
+        clean_stderr = re.sub(r'[A-Za-z]:\\[^ \n]+', '[PATH]', stderr_val)
+        clean_stderr = re.sub(r'/[a-zA-Z0-9_\.\-]+/[a-zA-Z0-9_\.\-/]+', '[PATH]', clean_stderr)
         return jsonify({
             "status": "success",
-            "stdout": result.stdout,
+            "stdout": stdout_val,
             "stderr": clean_stderr,
-            "returncode": result.returncode
+            "returncode": 0
         })
     except Exception as e:
         import traceback
         import sys
-        print("[ERROR] Retraining failed:", file=sys.stderr)
+        print("[ERROR] Post-retraining processing failed:", file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
         sys.stderr.flush()
-        return jsonify({"error": "Failed to retrain model due to pipeline execution failure. Please check server logs for details."}), 500
+        return jsonify({"error": "Failed to load/upload trained model after training."}), 500
 
 
 @app.route("/api/admin/add-quarter", methods=["POST"])
