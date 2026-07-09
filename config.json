@@ -2,120 +2,29 @@
   "_comment": "Update this file monthly/quarterly with latest values. No code changes needed.",
   "_last_updated": "June 2026",
   "_sources": "RBI / MOSPI / MoC / S&P Global / CMIE",
-  "demand_supply": {
-    "_comment": "Update quarterly. Demand-side and supply-side new indicators.",
-    "demand": {
-      "govt_capex": {
-        "label": "Govt Capital Expenditure",
-        "signal": "blue",
-        "sub": "FY27 Budget \u00b7 CGA",
-        "unit": "L Cr",
-        "value": 12.2
-      },
-      "pfce_growth": {
-        "label": "Private Consumption (PFCE)",
-        "signal": "green",
-        "sub": "YoY Growth \u00b7 MOSPI",
-        "unit": "%",
-        "value": 8
-      },
-      "rural_wage_growth": {
-        "label": "Rural Wage Growth",
-        "signal": "amber",
-        "sub": "Real wages YoY \u00b7 Labour Bureau",
-        "unit": "%",
-        "value": 3.8
-      },
-      "two_wheeler_sales": {
-        "label": "Two-Wheeler Sales",
-        "signal": "green",
-        "sub": "YoY Growth \u00b7 SIAM",
-        "unit": "%",
-        "value": 14.8
-      }
-    },
-    "supply": {
-      "capacity_util": {
-        "label": "Capacity Utilization",
-        "signal": "blue",
-        "sub": "RBI OBICUS survey",
-        "unit": "%",
-        "value": 78.6
-      },
-      "core_sector_growth": {
-        "label": "Core Sector Growth",
-        "signal": "amber",
-        "sub": "8-core industries \u00b7 DPIIT",
-        "unit": "%",
-        "value": 4.5
-      },
-      "corporate_earnings": {
-        "label": "Corporate Earnings (PAT)",
-        "signal": "amber",
-        "sub": "Nifty 50 YoY \u00b7 NSE",
-        "unit": "%",
-        "value": 78.9
-      },
-      "wpi_inflation": {
-        "label": "WPI Inflation",
-        "signal": "red",
-        "sub": "Wholesale prices \u00b7 DPIIT",
-        "unit": "%",
-        "value": 883
-      }
-    }
-  },
-  "fallback_defaults": {
-    "_comment": "Used by fetch_data.py ONLY when the corresponding live API call (World Bank / data.gov.in / frankfurter.app) fails or returns no data. These are NOT marked 'Live' on the dashboard when used -- check sources_live logic in fetch_data.py. Update these whenever a fresher official figure is published, even if the live APIs are working fine, so a temporary outage never shows stale numbers.",
-    "cpi_inflation_pct": 8.98,
-    "cpi_source": "MOSPI CPI release, May 2026 data, released 12 Jun 2026",
-    "export_growth_pct": 16.09,
-    "export_growth_source": "Ministry of Commerce, Apr-May FY2026-27",
-    "gdp_growth_pct": 8.9,
-    "gdp_growth_source": "MOSPI Provisional Estimate FY2025-26, released 5 Jun 2026",
-    "inr_usd": 98.55,
-    "inr_usd_source": "Last known fallback if frankfurter.app (ECB) is unreachable"
-  },
-  "hf_indicators": {
-    "deposit_growth_yoy": "10.2%",
-    "epfo_net_additions": "1.58M",
-    "food_inflation_cpi": "4.78%",
-    "labour_force_part": "54.4%",
-    "merchandise_exports_usd_b": 45.2,
-    "merchandise_imports_usd_b": 73.4,
-    "msp_wheat_per_qtl": "2425",
-    "rabi_sowing_mha": "67.2",
-    "reservoir_levels_pct": "68%",
-    "rural_unemployment": "5.1%"
-  },
   "macro": {
-    "agri_gva": 3.2,
+    "repo_rate": 5.25,
+    "next_mpc_meeting": "3\u20135 Aug 2026",
+    "iip_growth": 5.0,
     "credit_growth": 7.8,
-    "diesel_consumption_growth": 3.5,
-    "electricity_demand": 150,
-    "eway_bill_growth": 11,
-    "fii_net_flow": -2100,
-    "fiscal_deficit": 4.9,
+    "agri_gva": 3.2,
+    "npa_ratio": 2.8,
     "forex_reserves": 622.5,
+    "fiscal_deficit": 4.9,
+    "unemployment": 5.5,
+    "pmi_services": 58.0,
     "gst_collection": 185000,
     "gst_collection_prev_month": 178500,
-    "iip_growth": 5,
+    "upi_volume": 16.5,
+    "electricity_demand": 150.0,
+    "railway_freight": 128.0,
+    "eway_bill_growth": 11.0,
+    "diesel_consumption_growth": 3.5,
     "india_vix": 13.2,
-    "next_mpc_meeting": "5 july 28",
-    "npa_ratio": 2.8,
-    "pmi_services": 58,
-    "railway_freight": 128,
-    "repo_rate": 5,
-    "unemployment": 5.5,
-    "upi_volume": 16.5
+    "fii_net_flow": -2100
   },
   "pmi": {
-    "sub_indices": {
-      "employment": "53.4",
-      "input_price": "57.6",
-      "new_orders": "59.2",
-      "output": "58.1"
-    },
+    "value": 55.0,
     "trend_12m": [
       58.1,
       57.9,
@@ -128,11 +37,30 @@
       58.2,
       58.1,
       54.7,
-      55
+      55.0
     ],
-    "value": 55
+    "sub_indices": {
+      "new_orders": "59.2",
+      "output": "58.1",
+      "employment": "53.4",
+      "input_price": "57.6"
+    }
   },
   "sector_trends": {
+    "banking_12m": [
+      11.0,
+      14.5,
+      17.5,
+      16.0,
+      15.0,
+      16.0,
+      16.3,
+      16.5,
+      16.3,
+      15.0,
+      11.5,
+      7.8
+    ],
     "agriculture_12m": [
       3.2,
       4.5,
@@ -144,27 +72,13 @@
       0.7,
       0.4,
       3.5,
-      2,
+      2.0,
       3.8
-    ],
-    "banking_12m": [
-      11,
-      14.5,
-      17.5,
-      16,
-      15,
-      16,
-      16.3,
-      16.5,
-      16.3,
-      15,
-      11.5,
-      7.8
     ],
     "employment_12m": [
       7.5,
       7.2,
-      7,
+      7.0,
       6.8,
       6.7,
       6.5,
@@ -175,6 +89,92 @@
       6.6,
       5.5
     ]
+  },
+  "hf_indicators": {
+    "rabi_sowing_mha": "67.2",
+    "reservoir_levels_pct": "68%",
+    "msp_wheat_per_qtl": "2425",
+    "food_inflation_cpi": "4.78%",
+    "deposit_growth_yoy": "10.2%",
+    "epfo_net_additions": "1.58M",
+    "labour_force_part": "54.4%",
+    "rural_unemployment": "5.1%",
+    "merchandise_exports_usd_b": 45.2,
+    "merchandise_imports_usd_b": 73.4
+  },
+  "fallback_defaults": {
+    "_comment": "Used by fetch_data.py ONLY when the corresponding live API call (World Bank / data.gov.in / frankfurter.app) fails or returns no data. These are NOT marked 'Live' on the dashboard when used -- check sources_live logic in fetch_data.py. Update these whenever a fresher official figure is published, even if the live APIs are working fine, so a temporary outage never shows stale numbers.",
+    "gdp_growth_pct": 7.7,
+    "gdp_growth_source": "MOSPI Provisional Estimate FY2025-26, released 5 Jun 2026",
+    "cpi_inflation_pct": 3.93,
+    "cpi_source": "MOSPI CPI release, May 2026 data, released 12 Jun 2026",
+    "export_growth_pct": 16.09,
+    "export_growth_source": "Ministry of Commerce, Apr-May FY2026-27",
+    "inr_usd": 94.5,
+    "inr_usd_source": "Last known fallback if frankfurter.app (ECB) is unreachable"
+  },
+  "demand_supply": {
+    "_comment": "Update quarterly. Demand-side and supply-side new indicators.",
+    "demand": {
+      "pfce_growth": {
+        "value": 7.0,
+        "unit": "%",
+        "label": "Private Consumption (PFCE)",
+        "sub": "YoY Growth \u00b7 MOSPI",
+        "signal": "green"
+      },
+      "two_wheeler_sales": {
+        "value": 14.8,
+        "unit": "%",
+        "label": "Two-Wheeler Sales",
+        "sub": "YoY Growth \u00b7 SIAM",
+        "signal": "green"
+      },
+      "rural_wage_growth": {
+        "value": 3.8,
+        "unit": "%",
+        "label": "Rural Wage Growth",
+        "sub": "Real wages YoY \u00b7 Labour Bureau",
+        "signal": "amber"
+      },
+      "govt_capex": {
+        "value": 12.2,
+        "unit": "L Cr",
+        "label": "Govt Capital Expenditure",
+        "sub": "FY27 Budget \u00b7 CGA",
+        "signal": "blue"
+      }
+    },
+    "supply": {
+      "core_sector_growth": {
+        "value": 0.5,
+        "unit": "%",
+        "label": "Core Sector Growth",
+        "sub": "8-core industries \u00b7 DPIIT",
+        "signal": "amber"
+      },
+      "capacity_util": {
+        "value": 75.6,
+        "unit": "%",
+        "label": "Capacity Utilization",
+        "sub": "RBI OBICUS survey",
+        "signal": "blue"
+      },
+      "wpi_inflation": {
+        "value": 8.3,
+        "unit": "%",
+        "label": "WPI Inflation",
+        "sub": "Wholesale prices \u00b7 DPIIT",
+        "signal": "red"
+      },
+      "corporate_earnings": {
+        "value": 4.5,
+        "unit": "%",
+        "label": "Corporate Earnings (PAT)",
+        "sub": "Nifty 50 YoY \u00b7 NSE",
+        "signal": "amber"
+      }
+    }
   },
   "security": {
     "auth_max_failed_attempts": 5,
