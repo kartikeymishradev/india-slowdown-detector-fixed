@@ -59,7 +59,7 @@ Every number the dashboard shows is designed to be **traceable and explainable**
 
 **Admin panel** (token-protected)
 - Edit live config values and fallback defaults
-- Add a new labeled quarter and trigger a full model retrain from the browser
+- Add a new labeled quarter and trigger a full model retrain from the browser — added quarters persist to Redis and are merged into training automatically, so a retrain doesn't require a fresh git commit for every new quarter
 - Force-refresh AI-grounded data on demand
 - Raw config viewer + system diagnostics
 
@@ -199,7 +199,7 @@ The project deploys as a single Flask app on Vercel:
 
 ## Research
 
-**Paper:** *AI-Driven Early Detection of Economic Slowdown in India Using Multi-Sector High-Frequency Indicators*
+**Paper:** *AI Driven Early Detection of Economic Slowdown in India Using Multi Sector High Frequency Indicators*
 
 Presented at **NCMPCS-2026** — National Conference on Machine Learning and Predictive Analytics Using Computational Science, Department of CSE, FOET, Dr. Shakuntala Misra National Rehabilitation University, Lucknow.
 
