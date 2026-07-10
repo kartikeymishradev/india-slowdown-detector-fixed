@@ -2,6 +2,6 @@
   "num_quarters": 52,
   "first_quarter": "Q1_FY2013",
   "last_quarter": "Q4_FY2025",
-  "cv5_accuracy": 74.9,
-  "loo_accuracy": 75.0
+  "cv5_accuracy": 78.9,
+  "loo_accuracy": 82.7
 }

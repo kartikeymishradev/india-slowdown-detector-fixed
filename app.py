@@ -1124,29 +1124,8 @@ def api_admin_retrain():
     try:
         from model.train_model import run_training
         run_training()
-    except Exception as e:
-        import traceback
-        traceback.print_exc(file=sys.stderr)
-        run_err = e
-    finally:
-        stdout_val = sys.stdout.getvalue()
-        stderr_val = sys.stderr.getvalue()
         
-        # Restore standard output streams
-        sys.stdout = old_stdout
-        sys.stderr = old_stderr
-        
-    if run_err is not None:
-        clean_stderr = re.sub(r'[A-Za-z]:\\[^ \n]+', '[PATH]', stderr_val)
-        clean_stderr = re.sub(r'/[a-zA-Z0-9_\.\-]+/[a-zA-Z0-9_\.\-/]+', '[PATH]', clean_stderr)
-        return jsonify({
-            "error": "Failed to retrain model due to pipeline execution failure.",
-            "stdout": stdout_val,
-            "stderr": clean_stderr
-        }), 500
-        
-    try:
-        # After running train_model successfully:
+        # Process model and uploads while stdout redirection is active to capture logs
         temp_model_path = os.path.join(tempfile.gettempdir(), 'model_temp.pkl')
         if os.path.exists(temp_model_path):
             with open(temp_model_path, 'rb') as f:
@@ -1174,7 +1153,9 @@ def api_admin_retrain():
                     with urllib.request.urlopen(req, timeout=10) as r:
                         res_body = json.loads(r.read())
                     if not res_body.get("error"):
-                        print("[OK] Retrained model uploaded to Upstash Redis successfully!")
+                        print("[OK] Retrained model weights uploaded to Upstash Redis successfully!")
+                    else:
+                        print(f"[WARN] Redis model upload rejected by server: {res_body.get('error')}")
                     
                     # Upload metadata to Redis as well
                     temp_meta_path = os.path.join(tempfile.gettempdir(), 'model_metadata_temp.json')
@@ -1195,29 +1176,47 @@ def api_admin_retrain():
                             res_meta = json.loads(r_meta.read())
                         if not res_meta.get("error"):
                             print("[OK] Retrained model metadata uploaded to Upstash Redis successfully!")
+                        else:
+                            print(f"[WARN] Redis metadata upload rejected by server: {res_meta.get('error')}")
                 except Exception as e:
                     print(f"[WARN] Failed to upload retrained model/metadata to Redis: {e}")
+            else:
+                print("[WARN] Redis is NOT configured. Skipping cloud model/metadata sync. (Ensure UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN are set in Vercel settings.)")
             
             # Reload global model in memory
             global model
             model = joblib.load(io.BytesIO(model_bytes))
             print("[OK] In-memory model reloaded from temp model bytes")
             
+    except Exception as e:
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        run_err = e
+    finally:
+        stdout_val = sys.stdout.getvalue()
+        stderr_val = sys.stderr.getvalue()
+        
+        # Restore standard output streams
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
+        
+    if run_err is not None:
         clean_stderr = re.sub(r'[A-Za-z]:\\[^ \n]+', '[PATH]', stderr_val)
         clean_stderr = re.sub(r'/[a-zA-Z0-9_\.\-]+/[a-zA-Z0-9_\.\-/]+', '[PATH]', clean_stderr)
         return jsonify({
-            "status": "success",
+            "error": "Failed to retrain model due to pipeline execution failure.",
             "stdout": stdout_val,
-            "stderr": clean_stderr,
-            "returncode": 0
-        })
-    except Exception as e:
-        import traceback
-        import sys
-        print("[ERROR] Post-retraining processing failed:", file=sys.stderr)
-        traceback.print_exc(file=sys.stderr)
-        sys.stderr.flush()
-        return jsonify({"error": "Failed to load/upload trained model after training."}), 500
+            "stderr": clean_stderr
+        }), 500
+        
+    clean_stderr = re.sub(r'[A-Za-z]:\\[^ \n]+', '[PATH]', stderr_val)
+    clean_stderr = re.sub(r'/[a-zA-Z0-9_\.\-]+/[a-zA-Z0-9_\.\-/]+', '[PATH]', clean_stderr)
+    return jsonify({
+        "status": "success",
+        "stdout": stdout_val,
+        "stderr": clean_stderr,
+        "returncode": 0
+    })
 
 
 @app.route("/api/admin/add-quarter", methods=["POST"])
