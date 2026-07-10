@@ -345,11 +345,21 @@ def get_security_config():
         }
 
 def get_ip():
-    headers_list = ["X-Forwarded-For", "X-Real-IP"]
-    for h in headers_list:
-        val = request.headers.get(h)
-        if val:
-            return val.split(",")[0].strip()
+    # Vercel-specific security guarantee: Vercel strictly overwrites and protects 
+    # the X-Forwarded-For header, placing the actual client IP as the first element 
+    # in the comma-separated list to prevent external spoofing.
+    xff = request.headers.get("X-Forwarded-For")
+    if xff:
+        parts = [p.strip() for p in xff.split(",") if p.strip()]
+        if parts:
+            return parts[0]
+            
+    # For local or non-Vercel environments (e.g. running via flask run locally),
+    # fallback to X-Real-IP or remote_addr.
+    xri = request.headers.get("X-Real-IP")
+    if xri:
+        return xri.strip()
+        
     return request.remote_addr or "127.0.0.1"
 
 def check_redis_attempts(ip, username):
@@ -479,13 +489,66 @@ def limit_rate(endpoint_type):
                 
             ip = get_ip()
             now = time.time()
-            with _rate_limit_lock:
-                history = _ip_request_history.get((ip, endpoint_type), [])
-                history = [t for t in history if now - t < 60]
-                if len(history) >= limit:
-                    raise RateLimitException(f"Rate limit exceeded. Limit is {limit} requests per minute.")
-                history.append(now)
-                _ip_request_history[(ip, endpoint_type)] = history
+            
+            # Try Upstash Redis for stateless serverless rate limiting if available
+            redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
+            redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
+            
+            redis_success = False
+            if redis_url and redis_token:
+                try:
+                    key = f"ratelimit:{ip}:{endpoint_type}"
+                    minute_bucket = int(now // 60)
+                    key_bucket = f"{key}:{minute_bucket}"
+                    
+                    body = json.dumps(["INCR", key_bucket]).encode()
+                    req = urllib.request.Request(
+                        redis_url,
+                        data=body,
+                        headers={
+                            "Authorization": f"Bearer {redis_token}",
+                            "Content-Type": "application/json",
+                        },
+                        method="POST",
+                    )
+                    with urllib.request.urlopen(req, timeout=1.0) as r:
+                        res = json.loads(r.read())
+                    
+                    current_count = 0
+                    if "result" in res:
+                        current_count = int(res["result"])
+                    
+                    if current_count == 1:
+                        expire_body = json.dumps(["EXPIRE", key_bucket, "65"]).encode()
+                        req_exp = urllib.request.Request(
+                            redis_url,
+                            data=expire_body,
+                            headers={
+                                "Authorization": f"Bearer {redis_token}",
+                                "Content-Type": "application/json",
+                            },
+                            method="POST",
+                        )
+                        with urllib.request.urlopen(req_exp, timeout=1.0) as r_exp:
+                            pass
+                    
+                    if current_count > limit:
+                        raise RateLimitException(f"Rate limit exceeded. Limit is {limit} requests per minute.")
+                    redis_success = True
+                except RateLimitException:
+                    raise
+                except Exception:
+                    pass
+            
+            if not redis_success:
+                with _rate_limit_lock:
+                    history = _ip_request_history.get((ip, endpoint_type), [])
+                    history = [t for t in history if now - t < 60]
+                    if len(history) >= limit:
+                        raise RateLimitException(f"Rate limit exceeded. Limit is {limit} requests per minute.")
+                    history.append(now)
+                    _ip_request_history[(ip, endpoint_type)] = history
+                    
             return f(*args, **kwargs)
         return wrapped
     return decorator
@@ -679,8 +742,12 @@ def handle_general_exception(e):
 def verify_admin_credentials():
     admin_token = os.environ.get("ADMIN_TOKEN")
     if not admin_token:
-        # Localhost development allows bypass if no token is configured
-        return True
+        # Fail-closed: require ADMIN_TOKEN on production hostnames.
+        # Allow bypass only if running locally on localhost/127.0.0.1
+        host = request.host.split(":")[0]
+        if host in ("localhost", "127.0.0.1"):
+            return True
+        return False
         
     auth_header = request.headers.get("Authorization", "")
     token = auth_header.replace("Bearer ", "").strip()
