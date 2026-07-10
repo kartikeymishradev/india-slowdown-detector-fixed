@@ -11,6 +11,7 @@ import gzip
 import io
 import numpy as np
 import pandas as pd
+from flask import send_from_directory
 from flask import Flask, jsonify, render_template, request, send_from_directory, Response
 from flask_cors import CORS
 from dotenv import load_dotenv
@@ -30,6 +31,14 @@ from data.gemini_grounding import (
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 31536000
 CORS(app)
+
+@app.route("/favicon.ico")
+def favicon():
+    return send_from_directory(
+        os.path.join(app.root_path, "static", "img"),
+        "favicon.svg",
+        mimetype="image/svg+xml"
+    )
 
 
 @app.after_request
