@@ -116,7 +116,7 @@ function setMacro(data) {
   cpiD.textContent = ind.cpi > 6 ? '↑ Above 6% upper band' : ind.cpi > 4 ? '↑ Above 4% target' : '→ Near target';
   cpiD.className = 'macro-delta ' + (ind.cpi > 4 ? 'down' : 'up');
   document.getElementById('m-repo').textContent  = ind.repo_rate + '%';
-  document.getElementById('m-fx').textContent    = '₹' + ind.inr_usd;
+  document.getElementById('m-fx').textContent    = '₹' + parseFloat(ind.inr_usd).toFixed(2);
   document.getElementById('m-exp').textContent   = ind.export_growth + '%';
   document.getElementById('m-exp-d').textContent = ind.export_growth < 0 ? '↓ Declining' : '↑ Growing';
   document.getElementById('m-exp-d').className   = 'macro-delta ' + (ind.export_growth < 0 ? 'down' : 'up');
@@ -702,6 +702,10 @@ async function refreshAll() {
     return;
   }
   window._cachedData = data;
+  
+  if (data.model_metadata) {
+    updateModelMetadata(data.model_metadata);
+  }
 
   const sectors = data.indicators.sectors;
   setHeroBanner(data.risk_score, data.prediction.label);
@@ -1574,6 +1578,32 @@ function authenticateAdmin() {
       document.getElementById('cfg-fallback-gdp').value = data.fallback_defaults?.gdp_growth_pct || 7.7;
       document.getElementById('cfg-fallback-cpi').value = data.fallback_defaults?.cpi_inflation_pct || 3.93;
       document.getElementById('cfg-fallback-inr').value = data.fallback_defaults?.inr_usd || 94.5;
+
+      // Populate new config editor fields
+      document.getElementById('cfg-pmi-value').value = data.pmi?.value != null ? data.pmi.value : 55.0;
+      document.getElementById('cfg-pmi-new-orders').value = data.pmi?.sub_indices?.new_orders || '';
+      document.getElementById('cfg-pmi-output').value = data.pmi?.sub_indices?.output || '';
+      document.getElementById('cfg-pmi-employment').value = data.pmi?.sub_indices?.employment || '';
+      document.getElementById('cfg-pmi-input-price').value = data.pmi?.sub_indices?.input_price || '';
+
+      document.getElementById('cfg-credit-growth').value = data.macro?.credit_growth != null ? data.macro.credit_growth : 7.8;
+      document.getElementById('cfg-deposit-growth').value = data.hf_indicators?.deposit_growth_yoy || '';
+      document.getElementById('cfg-npa-ratio').value = data.macro?.npa_ratio != null ? data.macro.npa_ratio : 2.8;
+      document.getElementById('cfg-agri-gva').value = data.macro?.agri_gva != null ? data.macro.agri_gva : 3.8;
+      document.getElementById('cfg-rabi-sowing').value = data.hf_indicators?.rabi_sowing_mha || '';
+      document.getElementById('cfg-reservoir-levels').value = data.hf_indicators?.reservoir_levels_pct || '';
+      document.getElementById('cfg-msp-wheat').value = data.hf_indicators?.msp_wheat_per_qtl || '';
+      document.getElementById('cfg-food-inflation').value = data.hf_indicators?.food_inflation_cpi || '';
+
+      document.getElementById('cfg-merch-exports').value = data.hf_indicators?.merchandise_exports_usd_b || '';
+      document.getElementById('cfg-merch-imports').value = data.hf_indicators?.merchandise_imports_usd_b || '';
+      document.getElementById('cfg-services-exports').value = data.hf_indicators?.services_exports_yoy || '+13.0%';
+      document.getElementById('cfg-export-growth').value = data.fallback_defaults?.export_growth_pct || '';
+
+      document.getElementById('cfg-unemployment-urban').value = data.macro?.unemployment != null ? data.macro.unemployment : 6.6;
+      document.getElementById('cfg-unemployment-rural').value = data.hf_indicators?.rural_unemployment || '';
+      document.getElementById('cfg-epfo-additions').value = data.hf_indicators?.epfo_net_additions || '';
+      document.getElementById('cfg-lfpr').value = data.hf_indicators?.labour_force_part || '';
       
       // Unlock UI tabs & show first tab
       document.getElementById('config-auth-view').style.display = 'none';
@@ -1637,6 +1667,35 @@ function saveConfiguration() {
   window._serverConfig.fallback_defaults.gdp_growth_pct = parseFloat(document.getElementById('cfg-fallback-gdp').value);
   window._serverConfig.fallback_defaults.cpi_inflation_pct = parseFloat(document.getElementById('cfg-fallback-cpi').value);
   window._serverConfig.fallback_defaults.inr_usd = parseFloat(document.getElementById('cfg-fallback-inr').value);
+
+  // Save new config editor fields
+  if (!window._serverConfig.pmi) window._serverConfig.pmi = {};
+  if (!window._serverConfig.pmi.sub_indices) window._serverConfig.pmi.sub_indices = {};
+  window._serverConfig.pmi.value = parseFloat(document.getElementById('cfg-pmi-value').value);
+  window._serverConfig.pmi.sub_indices.new_orders = document.getElementById('cfg-pmi-new-orders').value.trim();
+  window._serverConfig.pmi.sub_indices.output = document.getElementById('cfg-pmi-output').value.trim();
+  window._serverConfig.pmi.sub_indices.employment = document.getElementById('cfg-pmi-employment').value.trim();
+  window._serverConfig.pmi.sub_indices.input_price = document.getElementById('cfg-pmi-input-price').value.trim();
+
+  window._serverConfig.macro.credit_growth = parseFloat(document.getElementById('cfg-credit-growth').value);
+  if (!window._serverConfig.hf_indicators) window._serverConfig.hf_indicators = {};
+  window._serverConfig.hf_indicators.deposit_growth_yoy = document.getElementById('cfg-deposit-growth').value.trim();
+  window._serverConfig.macro.npa_ratio = parseFloat(document.getElementById('cfg-npa-ratio').value);
+  window._serverConfig.macro.agri_gva = parseFloat(document.getElementById('cfg-agri-gva').value);
+  window._serverConfig.hf_indicators.rabi_sowing_mha = document.getElementById('cfg-rabi-sowing').value.trim();
+  window._serverConfig.hf_indicators.reservoir_levels_pct = document.getElementById('cfg-reservoir-levels').value.trim();
+  window._serverConfig.hf_indicators.msp_wheat_per_qtl = document.getElementById('cfg-msp-wheat').value.trim();
+  window._serverConfig.hf_indicators.food_inflation_cpi = document.getElementById('cfg-food-inflation').value.trim();
+
+  window._serverConfig.hf_indicators.merchandise_exports_usd_b = parseFloat(document.getElementById('cfg-merch-exports').value);
+  window._serverConfig.hf_indicators.merchandise_imports_usd_b = parseFloat(document.getElementById('cfg-merch-imports').value);
+  window._serverConfig.hf_indicators.services_exports_yoy = document.getElementById('cfg-services-exports').value.trim();
+  window._serverConfig.fallback_defaults.export_growth_pct = parseFloat(document.getElementById('cfg-export-growth').value);
+
+  window._serverConfig.macro.unemployment = parseFloat(document.getElementById('cfg-unemployment-urban').value);
+  window._serverConfig.hf_indicators.rural_unemployment = document.getElementById('cfg-unemployment-rural').value.trim();
+  window._serverConfig.hf_indicators.epfo_net_additions = document.getElementById('cfg-epfo-additions').value.trim();
+  window._serverConfig.hf_indicators.labour_force_part = document.getElementById('cfg-lfpr').value.trim();
   
   const user = sessionStorage.getItem('admin_user') || '';
   const token = sessionStorage.getItem('admin_token') || '';
@@ -1763,7 +1822,7 @@ function addLabeledQuarter() {
     return;
   }
   for (const k in fields) {
-    if (k !== 'quarter' && isNaN(fields[k])) {
+    if (k !== 'quarter' && k !== 'label' && isNaN(fields[k])) {
       alert(`Please enter a valid numeric value for ${k.replace('_', ' ')}.`);
       return;
     }
@@ -1883,4 +1942,49 @@ function triggerModelRetrain() {
         btn.innerHTML = '🧠 Retrain ML Model';
       }
     });
+}
+
+function updateModelMetadata(meta) {
+  if (!meta) return;
+  
+  const getFY = q => {
+    if (!q) return 'FY2025';
+    const match = q.match(/FY\d{4}/);
+    return match ? match[0] : 'FY2025';
+  };
+  
+  const startFY = getFY(meta.first_quarter);
+  const endFY = getFY(meta.last_quarter);
+  const rangeStr = `${startFY}–${endFY}`;
+  
+  // 1. Main page model description text
+  const quartersSpan = document.getElementById('model-desc-quarters');
+  if (quartersSpan) quartersSpan.textContent = meta.num_quarters;
+  const rangeSpan = document.getElementById('model-desc-range');
+  if (rangeSpan) rangeSpan.textContent = rangeStr;
+  const cvSpan = document.getElementById('model-desc-cv');
+  if (cvSpan) cvSpan.textContent = `${meta.cv5_accuracy}%`;
+  const looSpan = document.getElementById('model-desc-loo');
+  if (looSpan) looSpan.textContent = `${meta.loo_accuracy}%`;
+
+  // 2. Tab 3 System & Model in Config Modal
+  const statQuarters = document.getElementById('model-stat-quarters');
+  if (statQuarters) statQuarters.textContent = `${meta.num_quarters} Labeled Quarters`;
+  const statRange = document.getElementById('model-stat-range');
+  if (statRange) statRange.textContent = `${startFY} – ${endFY} (v2 Data)`;
+  
+  const statRowData = document.getElementById('model-stat-row-data');
+  if (statRowData) statRowData.textContent = `${meta.num_quarters} quarters, ${startFY}–${endFY}`;
+
+  // 3. Methodology Modal Accuracy Cards
+  const cardCv = document.getElementById('model-card-cv');
+  if (cardCv) cardCv.textContent = `${meta.cv5_accuracy}%`;
+  const cardLoo = document.getElementById('model-card-loo');
+  if (cardLoo) cardLoo.textContent = `${meta.loo_accuracy}%`;
+  
+  // 4. Methodology Modal explanation text description
+  const txtQuartersboth = document.getElementById('model-text-quarters-both');
+  if (txtQuartersboth) txtQuartersboth.textContent = meta.num_quarters;
+  const txtRangeboth = document.getElementById('model-text-range-both');
+  if (txtRangeboth) txtRangeboth.textContent = rangeStr;
 }

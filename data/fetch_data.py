@@ -101,58 +101,69 @@ def load_config():
     if _cached_config is not None:
         return _cached_config
         
-    # 1. Load local config.json immediately (very fast fallback/default)
+    # Load local config.json immediately as base
     try:
         with open(CONFIG_PATH, 'r') as f:
-            _cached_config = json.load(f)
+            base_config = json.load(f)
     except Exception as e:
         print(f"[WARN] config.json not found or invalid: {e}")
-        _cached_config = {}
+        base_config = {}
         
-    # 2. Fetch overrides from Redis in background to update cache asynchronously
+    # Try fetching overrides from Redis synchronously (under 1-2 seconds)
     redis_url = os.environ.get("UPSTASH_REDIS_REST_URL") or os.environ.get("KV_REST_API_URL")
     redis_token = os.environ.get("UPSTASH_REDIS_REST_TOKEN") or os.environ.get("KV_REST_API_TOKEN")
     redis_key = "config_overrides_v1"
     
     if redis_url and redis_token:
-        import threading
-        def _fetch_redis_config():
-            global _cached_config
-            try:
-                import urllib.request
-                body = json.dumps(["GET", redis_key]).encode()
-                req = urllib.request.Request(
-                    redis_url,
-                    data=body,
-                    headers={
-                        "Authorization": f"Bearer {redis_token}",
-                        "Content-Type": "application/json",
-                    },
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=5) as r:
-                    result = json.loads(r.read())
-                if result.get("result"):
-                    overrides = json.loads(result["result"])
-                    _cached_config = overrides
-                    print("[OK] Config overrides loaded from Upstash Redis (background)")
-            except Exception as e:
-                print(f"[WARN] Background Redis config load failed: {e}")
-                
-        threading.Thread(target=_fetch_redis_config, daemon=True).start()
-        
+        try:
+            import urllib.request
+            body = json.dumps(["GET", redis_key]).encode()
+            req = urllib.request.Request(
+                redis_url,
+                data=body,
+                headers={
+                    "Authorization": f"Bearer {redis_token}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=2.0) as r:
+                result = json.loads(r.read())
+            if result.get("result"):
+                overrides = json.loads(result["result"])
+                _cached_config = overrides
+                print("[OK] Config overrides loaded synchronously from Upstash Redis")
+                return _cached_config
+        except Exception as e:
+            print(f"[WARN] Redis config load failed (falling back to local): {e}")
+            
+    _cached_config = base_config
     return _cached_config
 
 # ── Live API fetchers ─────────────────────────────────────────────────────────
 
 def fetch_inr_usd():
-    """Live USD/INR from frankfurter.app (ECB rates, free, no key)."""
+    """Live USD/INR with dual API backup (Frankfurter + ExchangeRate-API)."""
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+    
+    # Source 1: Frankfurter API
     try:
-        r = requests.get("https://api.frankfurter.app/latest?from=USD&to=INR", timeout=2)
+        r = requests.get("https://api.frankfurter.app/latest?from=USD&to=INR", headers=headers, timeout=3.0)
         if r.status_code == 200:
-            return round(float(r.json()["rates"]["INR"]), 2)
-    except Exception:
-        pass
+            val = float(r.json()["rates"]["INR"])
+            return round(val, 2)
+    except Exception as e:
+        print(f"[WARN] Frankfurter USD/INR fetch failed: {e}")
+
+    # Source 2: ExchangeRate-API (Backup)
+    try:
+        r = requests.get("https://open.er-api.com/v6/latest/USD", headers=headers, timeout=3.0)
+        if r.status_code == 200:
+            val = float(r.json()["rates"]["INR"])
+            return round(val, 2)
+    except Exception as e:
+        print(f"[WARN] ExchangeRate-API USD/INR backup fetch failed: {e}")
+        
     return None
 
 
@@ -267,6 +278,14 @@ def fetch_exports_yoy(retries=1):
 
 def get_all_indicators():
     cfg = load_config()
+    
+    # Load original base config from file to detect admin overrides
+    try:
+        with open(CONFIG_PATH, 'r') as f:
+            base_config = json.load(f)
+    except Exception:
+        base_config = {}
+        
     macro    = cfg.get("macro", {})
     pmi      = cfg.get("pmi", {})
     trends   = cfg.get("sector_trends", {})
@@ -320,8 +339,8 @@ def get_all_indicators():
     credit_growth   = macro.get("credit_growth", 7.8)
     repo_rate       = macro.get("repo_rate", 5.25)
     next_mpc        = macro.get("next_mpc_meeting", "3–5 Aug 2026")
-    unemployment    = macro.get("unemployment", 6.6)
-    agri_gva        = macro.get("agri_gva", 3.8)
+    unemployment    = macro.get("unemployment", 5.5)
+    agri_gva        = macro.get("agri_gva", 3.2)
     npa_ratio       = macro.get("npa_ratio", 2.8)
     forex_reserves  = macro.get("forex_reserves", 622.5)
     fiscal_deficit  = macro.get("fiscal_deficit", 4.9)
@@ -332,28 +351,35 @@ def get_all_indicators():
     grounded_fields = []
     if grounded:
         if "pmi" in grounded:
-            pmi_value = grounded["pmi"]
-            grounded_fields.append("pmi")
+            if pmi_value == 55.0:
+                pmi_value = grounded["pmi"]
+                grounded_fields.append("pmi")
         if "credit_growth" in grounded:
-            credit_growth = grounded["credit_growth"]
-            grounded_fields.append("credit_growth")
+            if credit_growth == 7.8:
+                credit_growth = grounded["credit_growth"]
+                grounded_fields.append("credit_growth")
         if "unemployment" in grounded:
-            unemployment = grounded["unemployment"]
-            grounded_fields.append("unemployment")
+            if unemployment == 5.5:
+                unemployment = grounded["unemployment"]
+                grounded_fields.append("unemployment")
         if "agri_gva" in grounded:
-            agri_gva = grounded["agri_gva"]
-            grounded_fields.append("agri_gva")
+            if agri_gva == 3.2:
+                agri_gva = grounded["agri_gva"]
+                grounded_fields.append("agri_gva")
         if "repo_rate" in grounded:
-            repo_rate = grounded["repo_rate"]
-            grounded_fields.append("repo_rate")
+            if repo_rate == 5.25:
+                repo_rate = grounded["repo_rate"]
+                grounded_fields.append("repo_rate")
             if grounded.get("next_mpc_meeting"):
-                next_mpc = grounded["next_mpc_meeting"]
+                if next_mpc in ["3–5 Aug 2026", "3–7 Aug 2026", "3-5 Aug 2026", "3-7 Aug 2026"]:
+                    next_mpc = grounded["next_mpc_meeting"]
         # Exports: only let grounding fill in if the real data.gov.in API
         # didn't already give us a value — a genuine government source
         # beats an AI-grounded search result when both are available.
         if "export_growth" in grounded and "Exports:data.gov.in" not in sources_live:
-            exp_val = grounded["export_growth"]
-            grounded_fields.append("export_growth")
+            if exp_val == 16.09:
+                exp_val = grounded["export_growth"]
+                grounded_fields.append("export_growth")
         # GDP growth & CPI: the World Bank fetches above are annual-average /
         # nominal-USD figures that are frequently 1-3 YEARS stale (see the
         # caveats on fetch_cpi_india/fetch_gdp_growth_india) — a Gemini-grounded
@@ -512,7 +538,7 @@ def get_all_indicators():
                 {"label": "Merchandise exports ($B)", "value": str(merch_exports)},
                 {"label": "Merchandise imports ($B)", "value": str(merch_imports)},
                 {"label": "Trade deficit ($B)",       "value": str(trade_balance)},
-                {"label": "Services exports (YoY)",   "value": "+13.0%"},
+                {"label": "Services exports (YoY)",   "value": hf.get("services_exports_yoy", "+13.0%")},
             ]
         },
         "employment": {
@@ -526,9 +552,9 @@ def get_all_indicators():
             "trend": employ_trend,
             "hf": [
                 {"label": "Urban unemployment",      "value": f"{unemployment}%"},
-                {"label": "Rural unemployment",      "value": hf.get("rural_unemployment",  "4.2%")},
+                {"label": "Rural unemployment",      "value": hf.get("rural_unemployment",  "5.1%")},
                 {"label": "EPFO net additions",      "value": hf.get("epfo_net_additions",  "1.58M")},
-                {"label": "Labour force part. rate", "value": hf.get("labour_force_part",   "55.9%")},
+                {"label": "Labour force part. rate", "value": hf.get("labour_force_part",   "54.4%")},
             ]
         }
     }
