@@ -85,6 +85,10 @@ def run_training():
     X = df[FEATURES].fillna(df[FEATURES].median())
     y = df['label_enc']
     
+    # Calculate sample weights to balance both RF and GBM classes
+    from sklearn.utils.class_weight import compute_sample_weight
+    sample_weights = compute_sample_weight(class_weight='balanced', y=y)
+    
     print(f"Features: {len(FEATURES)}")
     print(f"\nLabel distribution:")
     label_names = {0:'Stable', 1:'Warning', 2:'Slowdown'}
@@ -111,16 +115,16 @@ def run_training():
     # ── Cross-validation ──────────────────────────────────────────────────────────
     print("\n--- Cross Validation ---")
     loo = LeaveOneOut()
-    loo_scores = cross_val_score(pipeline, X, y, cv=loo, scoring='accuracy')
+    loo_scores = cross_val_score(pipeline, X, y, cv=loo, scoring='accuracy', params={'clf__sample_weight': sample_weights})
     print(f"LOO Accuracy  : {loo_scores.mean():.3f} +/- {loo_scores.std():.3f}")
     
     skf = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
-    cv5 = cross_val_score(pipeline, X, y, cv=skf, scoring='accuracy')
+    cv5 = cross_val_score(pipeline, X, y, cv=skf, scoring='accuracy', params={'clf__sample_weight': sample_weights})
     print(f"5-Fold CV Acc : {cv5.mean():.3f} +/- {cv5.std():.3f}")
     print(f"Individual    : {[round(s,2) for s in cv5]}")
     
     # ── Train on full data ────────────────────────────────────────────────────────
-    pipeline.fit(X, y)
+    pipeline.fit(X, y, clf__sample_weight=sample_weights)
     train_preds = pipeline.predict(X)
     print("\n--- Training Set Report ---")
     print(classification_report(y, train_preds, target_names=['Stable','Warning','Slowdown']))
