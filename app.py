@@ -298,6 +298,11 @@ def robots():
     return Response(content, mimetype="text/plain")
 
 
+@app.route("/sw.js")
+def serve_sw():
+    return app.send_static_file("sw.js")
+
+
 @app.route("/sitemap.xml")
 def sitemap():
     content = f'''<?xml version="1.0" encoding="UTF-8"?>
