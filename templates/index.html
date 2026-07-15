@@ -28,6 +28,7 @@
 <meta name="twitter:image" content="https://arthspandan.vercel.app/static/img/logo.svg">
 <meta name="google-site-verification" content="0XDzu99bE_pP9nSra2OR0OjTxnmzpfVo_rP0CfaJydQ" />
 <meta name="msvalidate.01" content="05ED6C993EAE7013A9EF8C1E089526FF" />
+<link rel="manifest" href="/static/site.webmanifest">
 <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
 <link rel="shortcut icon" href="/static/img/favicon.svg">
 <link rel="apple-touch-icon" href="/static/img/logo.svg">
@@ -1001,5 +1002,15 @@ const observer = new IntersectionObserver(entries => {
 document.querySelectorAll('.content-section').forEach(s => observer.observe(s));
 </script>
 <script src="/static/script.min.js?v=2.2" defer></script>
+<script>
+// Register Service Worker for PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js')
+      .then(reg => console.log('[PWA] Service Worker registered successfully with scope:', reg.scope))
+      .catch(err => console.error('[PWA] Service Worker registration failed:', err));
+  });
+}
+</script>
 </body>
 </html>
